@@ -67,7 +67,9 @@ export class KinematicValidator {
 
       // Check profile-specific kinematics
       if (profile) {
-        this.checkBaxisOnProfile(block, i, profile);
+        if (opts.checkBRotation) {
+          this.checkBaxisOnProfile(block, i, profile);
+        }
         this.checkRotaryRange(block, i, profile);
       }
 
