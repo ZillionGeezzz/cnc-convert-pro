@@ -817,10 +817,12 @@ function convertSiemensCycleToG81(block: CNCBlock): string {
 }
 
 function formatNumber(num: number, decimals?: number): string {
+  const val = typeof num === "number" ? num : parseFloat(String(num));
+  if (isNaN(val)) return "0";
   if (decimals !== undefined) {
-    return num.toFixed(decimals);
+    return val.toFixed(decimals);
   }
-  return parseFloat(num.toFixed(4)).toString();
+  return parseFloat(val.toFixed(4)).toString();
 }
 
 export function generateProgram(
