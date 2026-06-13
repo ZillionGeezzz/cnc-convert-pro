@@ -85,6 +85,11 @@ function convertBlocks(
       convertMazakToStandard(newBlock);
     }
 
+    // Anything → Mazak (for Mazatrol/Smooth, handle EIA separately)
+    if (targetFamily === "mazak" && sourceFamily !== "mazak") {
+      convertStandardToMazak(newBlock);
+    }
+
     // Okuma specific
     if (sourceFamily === "okuma" && targetFamily !== "okuma") {
       convertStandardToSiemens(newBlock);
@@ -114,8 +119,7 @@ function getControllerFamily(format: ControllerFormat): string {
   if (format.startsWith("siemens")) return "siemens";
   if (format.startsWith("mitsubishi")) return "fanuc";
   if (format.startsWith("fanuc")) return "fanuc";
-  if (format.startsWith("heidenhain")) return "heidenhain";
-  if (format === "mazak-mazatrol" || format === "mazak-smooth") return "mazak";
+  if (format.startsWith("heidenhain")) return "heidenhain";    if (format.startsWith("mazak")) return "mazak";
   if (format === "okuma-osp") return "okuma";
   if (format === "haas") return "fanuc";
   if (format === "brother-speedio") return "fanuc";
@@ -247,6 +251,20 @@ function convertMazakToStandard(block: CNCBlock): void {
     block.comment = block.comment
       ? `Mazatrol: ${block.addresses["section"]}; ${block.comment}`
       : `Mazatrol: ${block.addresses["section"]}`;
+  }
+}
+
+function convertStandardToMazak(block: CNCBlock): void {
+  // Heidenhain L moves → standard G-code (already handled by convertHeidenhainToStandard)
+  // Siemens cycles → already converted by convertSiemensToStandard
+  // For Mazak EIA/ISO (standard G-code), blocks pass through as-is
+  // For Mazak Mazatrol/Smooth, the generator handles conversational formatting
+  
+  // Handle any remaining Heidenhain-specific items
+  if (block.heidenhainCommand === "TOOL CALL" && block.toolNumber) {
+    block.gCodes = ["G00"];
+    block.mCodes = ["M6"];
+    block.heidenhainCommand = undefined;
   }
 }
 
