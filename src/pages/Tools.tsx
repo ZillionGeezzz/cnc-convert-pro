@@ -29,6 +29,7 @@ import {
   type OperationType,
   type ToolParams,
   type ControllerFormat,
+  CONTROLLERS,
   TOOL_TYPE_LABELS,
   OPERATION_LABELS,
   WORKPIECE_MATERIALS,
@@ -59,7 +60,7 @@ type ToolDialogState = {
   depthOfCut: number;
   stepover: number;
   peckDepth: number;
-  coolant: "flood" | "mist" | "air" | "off";
+  coolant: ToolParams["coolant"];
   outputFormat: ControllerFormat;
   generatedCode: string;
   x: number;
@@ -414,7 +415,7 @@ export default function Tools() {
                   onValueChange={(v) =>
                     setDialogState((prev) => ({
                       ...prev,
-                      coolant: v as "flood" | "mist" | "air" | "off",
+                      coolant: v as ToolParams["coolant"],
                     }))
                   }
                 >
@@ -511,8 +512,11 @@ export default function Tools() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="siemens-840d">Siemens — SINUMERIK 840D</SelectItem>
-                  <SelectItem value="mitsubishi-m80">Mitsubishi — M80 Series</SelectItem>
+                  {CONTROLLERS.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.manufacturer} — {c.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

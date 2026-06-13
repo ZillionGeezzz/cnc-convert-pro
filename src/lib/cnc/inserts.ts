@@ -1,4 +1,4 @@
-import { InsertDefinition, InsertHolderDefinition, InsertShape, InsertClearance, InsertChipbreaker } from "./types";
+import { InsertDefinition, InsertHolderDefinition, InsertShape, InsertClearance, InsertChipbreaker, InsertTolerance } from "./types";
 
 /**
  * ISO 1832 Insert Database
@@ -409,7 +409,7 @@ const INSERTS: InsertDefinition[] = [
     isoCode: "OCTN 050612",
     shape: "H",
     clearance: "N",
-    tolerance: "T",
+    tolerance: "M" as InsertTolerance,
     size: 5,
     thickness: 6.35,
     noseRadius: 1.2,
@@ -597,7 +597,7 @@ const INSERTS: InsertDefinition[] = [
     isoCode: "CNGP 120408 CERAMIC",
     shape: "C",
     clearance: "G",
-    tolerance: "P",
+    tolerance: "M" as InsertTolerance,
     size: 12,
     thickness: 4.76,
     noseRadius: 0.8,

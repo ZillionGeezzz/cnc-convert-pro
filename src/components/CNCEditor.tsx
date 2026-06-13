@@ -1,5 +1,6 @@
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { tokenizeLine, TOKEN_COLORS, type GCodeTokenType } from "@/lib/cnc/highlighter";
 
 interface CNCEditorProps {
   value: string;
@@ -11,6 +12,24 @@ interface CNCEditorProps {
   className?: string;
   errorCount?: number;
   warningCount?: number;
+}
+
+/**
+ * Renders a highlighted line from tokens.
+ */
+function HighlightedLine({ tokens }: { tokens: ReturnType<typeof tokenizeLine> }) {
+  return (
+    <>
+      {tokens.map((token, idx) => {
+        const colorClass = TOKEN_COLORS[token.type] || "";
+        return (
+          <span key={idx} className={colorClass}>
+            {token.value}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 export function CNCEditor({
@@ -25,12 +44,20 @@ export function CNCEditor({
   warningCount,
 }: CNCEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const [lineCount, setLineCount] = useState(1);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const lines = useMemo(() => value.split("\n"), [value]);
+
+  const tokenizedLines = useMemo(
+    () => lines.map((line) => tokenizeLine(line)),
+    [lines],
+  );
 
   useEffect(() => {
-    const count = value ? value.split("\n").length : 1;
-    setLineCount(count);
-  }, [value]);
+    setLineCount(lines.length);
+  }, [lines.length]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -39,6 +66,12 @@ export function CNCEditor({
     [onChange],
   );
 
+  const handleScroll = useCallback(() => {
+    if (textareaRef.current) {
+      setScrollTop(textareaRef.current.scrollTop);
+    }
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Tab") {
@@ -46,10 +79,8 @@ export function CNCEditor({
         const textarea = e.currentTarget;
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
-        const newValue =
-          value.slice(0, start) + "  " + value.slice(end);
+        const newValue = value.slice(0, start) + "  " + value.slice(end);
         onChange?.(newValue);
-        // Restore cursor position after React re-render
         requestAnimationFrame(() => {
           textarea.selectionStart = textarea.selectionEnd = start + 2;
         });
@@ -57,6 +88,8 @@ export function CNCEditor({
     },
     [value, onChange],
   );
+
+  const lineNumberWidth = 10;
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -87,10 +120,13 @@ export function CNCEditor({
       >
         {/* Line numbers */}
         <div
-          className="absolute left-0 top-0 bottom-0 w-10 bg-zinc-50 dark:bg-zinc-900 border-r border-border select-none pointer-events-none"
+          className="absolute left-0 top-0 bottom-0 w-10 bg-zinc-50 dark:bg-zinc-900 border-r border-border select-none pointer-events-none z-10"
           aria-hidden="true"
         >
-          <div className="py-3">
+          <div
+            className="py-3 transition-transform"
+            style={{ transform: `translateY(-${scrollTop}px)` }}
+          >
             {Array.from({ length: lineCount }, (_, i) => (
               <div
                 key={i}
@@ -102,25 +138,46 @@ export function CNCEditor({
           </div>
         </div>
 
-        {/* Textarea */}
+        {/* Highlighting overlay */}
+        <div
+          ref={highlightRef}
+          className="pointer-events-none absolute left-0 top-0 right-0 bottom-0 overflow-hidden"
+          aria-hidden="true"
+        >
+          <div
+            className="py-3 pl-12 pr-4 whitespace-pre font-mono text-sm leading-relaxed"
+            style={{ transform: `translateY(-${scrollTop}px)` }}
+          >
+            {tokenizedLines.map((tokens, idx) => (
+              <div key={idx}>
+                <HighlightedLine tokens={tokens} />
+                {idx < tokenizedLines.length - 1 && "\n"}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Textarea (transparent) */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
           readOnly={readOnly}
           placeholder={placeholder}
           spellCheck={false}
           className={cn(
+            "relative z-5",
             "w-full h-full min-h-[inherit] resize-none",
             "pl-12 pr-4 py-3",
-            "bg-transparent text-zinc-900 dark:text-zinc-100",
+            "bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100",
             "placeholder:text-zinc-300 dark:placeholder:text-zinc-700",
             "border-0 outline-none focus:ring-0",
             "font-mono text-sm leading-relaxed",
             readOnly && "cursor-default",
           )}
-          style={{ minHeight }}
+          style={{ minHeight, color: "transparent" }}
         />
       </div>
     </div>
