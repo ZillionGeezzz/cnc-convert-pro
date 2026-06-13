@@ -643,6 +643,36 @@ export const COOLANT_OPTIONS: { value: ToolParams["coolant"]; label: string }[] 
 ];
 
 // ==========================================
+// MACHINE PROFILE — user-defined machine config
+// ==========================================
+
+export interface MachineProfile {
+  type: "vmc" | "hmc";
+  tableLength: number; // mm
+  tableWidth: number; // mm
+  xTravel: number; // mm
+  yTravel: number; // mm
+  zTravel: number; // mm
+  bAxis: boolean;
+  bAxisIncremental: boolean; // true = incremental, false = absolute
+  maxSpindleRPM: number;
+}
+
+export function createDefaultMachineProfile(): MachineProfile {
+  return {
+    type: "vmc",
+    tableLength: 914,
+    tableWidth: 356,
+    xTravel: 762,
+    yTravel: 406,
+    zTravel: 508,
+    bAxis: false,
+    bAxisIncremental: true,
+    maxSpindleRPM: 10000,
+  };
+}
+
+// ==========================================
 // UTILITY FUNCTIONS
 // ==========================================
 
