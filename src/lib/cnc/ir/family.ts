@@ -14,7 +14,7 @@ export function getControllerFamily(format: ControllerFormat): string {
     return "mazak";
   }
   if (format === "okuma-osp") return "okuma";
-  if (format === "haas") return "fanuc";
+  if (format === "haas") return "haas";
   if (format === "brother-speedio") return "fanuc";
   if (format === "fagor-8055") return "fagor";
   if (format === "bosch-mtx") return "bosch";

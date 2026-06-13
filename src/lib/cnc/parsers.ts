@@ -113,7 +113,7 @@ function parseSiemensLine(line: string, lineNum: number): CNCBlock | null {
       block.spindleSpeed = parseFloat(token.slice(1));
     } else if (token[0] === "T" && token.length > 1) {
       if (token.includes('"')) {
-        block.toolName = token.replace(/"/g, "").slice(1);
+        block.toolName = token.replace(/"/g, "").replace(/^T=/, "");
       } else {
         block.toolNumber = parseInt(token.slice(1), 10);
       }
