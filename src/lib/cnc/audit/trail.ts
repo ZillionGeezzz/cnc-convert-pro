@@ -53,15 +53,15 @@ export class AuditTrail {
   ): string {
     if (!this.enabled || this.entries.length === 0) return "";
 
-    const commentChar = getCommentChar(format);
+    const style = getCommentStyle(format);
     const lines: string[] = [];
-    const closeChar = format === "fanuc-0i" || format === "haas" ? ")" : "";
+    const header = style.open;
 
-    lines.push(`${commentChar}${closeChar}`);
-    lines.push(`${getHeader(format)} CNC Conversion Audit Trail`);
-    lines.push(`${getHeader(format)} Source: ${sourceFormat} → Target: ${format}`);
-    lines.push(`${getHeader(format)} ${this.entries.length} transformations applied`);
-    lines.push(`${commentChar}${closeChar}`);
+    lines.push(`${header}${style.close}`);
+    lines.push(`${header} CNC Conversion Audit Trail`);
+    lines.push(`${header} Source: ${sourceFormat} → Target: ${format}`);
+    lines.push(`${header} ${this.entries.length} transformations applied`);
+    lines.push(`${header}${style.close}`);
 
     // Group by confidence
     const exactCount = this.entries.filter((e) => e.confidence === "exact").length;
@@ -69,22 +69,22 @@ export class AuditTrail {
     const reviewCount = this.entries.filter((e) => e.confidence === "manual-review-needed").length;
 
     if (exactCount > 0) {
-      lines.push(`${getHeader(format)}   Exact: ${exactCount}`);
+      lines.push(`${header}   Exact: ${exactCount}`);
     }
     if (approxCount > 0) {
-      lines.push(`${getHeader(format)}   Approximate: ${approxCount} — manual check recommended`);
+      lines.push(`${header}   Approximate: ${approxCount} — manual check recommended`);
     }
     if (reviewCount > 0) {
-      lines.push(`${getHeader(format)}   Manual review needed: ${reviewCount}`);
+      lines.push(`${header}   Manual review needed: ${reviewCount}`);
     }
 
     // Detail for manual-review-needed entries
     const needsReview = this.entries.filter((e) => e.confidence === "manual-review-needed");
     for (const entry of needsReview) {
-      lines.push(`${getHeader(format)}   ⚠ ${entry.description}: ${entry.source}`);
+      lines.push(`${header}   ⚠ ${entry.description}: ${entry.source}`);
     }
 
-    lines.push(`${commentChar}${closeChar}`);
+    lines.push(`${header}${style.close}`);
 
     return lines.join("\n");
   }
@@ -98,8 +98,7 @@ export class AuditTrail {
   ): string {
     if (!this.enabled || block.audit.length === 0) return "";
 
-    const commentChar = getCommentChar(format);
-    const closeChar = (format === "fanuc-0i" || format === "haas") ? ")" : "";
+    const style = getCommentStyle(format);
 
     // Only add inline comment for approximate/manual-review
     const lowConfidence = block.audit.filter(
@@ -108,7 +107,7 @@ export class AuditTrail {
     if (lowConfidence.length === 0) return "";
 
     const descs = lowConfidence.map((a) => a.description).join("; ");
-    return ` ${commentChar}${descs}${closeChar}`;
+    return ` ${style.open}${descs}${style.close}`;
   }
 
   /**
@@ -120,20 +119,36 @@ export class AuditTrail {
 }
 
 /**
- * Determine comment character for a given format.
+ * Comment style configuration.
  */
-function getCommentChar(format: ControllerFormat): string {
-  if (format.startsWith("siemens") || format.startsWith("heidenhain") || format === "fagor-8055" || format === "bosch-mtx") {
-    return ";";
-  }
-  // Fanuc, Haas, Mitsubishi, Brother, Okuma — use parens by default
-  return "(";
+interface CommentStyle {
+  open: string;
+  close: string;
 }
 
 /**
- * Get header prefix character per format.
+ * Determine comment style for a given format.
+ * Returns the opening character(s) and closing character(s).
+ */
+function getCommentStyle(format: ControllerFormat): CommentStyle {
+  // Semicolon-based: Siemens, Heidenhain, Fagor, Bosch
+  if (format.startsWith("siemens") || format.startsWith("heidenhain") || format === "fagor-8055" || format === "bosch-mtx") {
+    return { open: ";", close: "" };
+  }
+  // Parenthesis-based: Fanuc, Haas, Mitsubishi, Brother, Okuma, Mazak EIA
+  return { open: "(", close: ")" };
+}
+
+/**
+ * Determine comment character for a given format (backwards-compatible).
+ */
+function getCommentChar(format: ControllerFormat): string {
+  return getCommentStyle(format).open;
+}
+
+/**
+ * Get header prefix character per format (backwards-compatible).
  */
 function getHeader(format: ControllerFormat): string {
-  const c = getCommentChar(format);
-  return c === "(" ? "(" : c;
+  return getCommentStyle(format).open;
 }

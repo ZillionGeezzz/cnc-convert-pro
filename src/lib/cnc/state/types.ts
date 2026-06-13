@@ -98,9 +98,12 @@ export function createInitialContext(sourceFormat: ControllerFormat): MachineCon
 
 /**
  * Deep clone a MachineContext.
+ * Handles undefined, NaN, and edge values that JSON.parse(JSON.stringify(...)) would lose.
  */
 export function cloneContext(ctx: MachineContext): MachineContext {
-  return JSON.parse(JSON.stringify(ctx));
+  return typeof structuredClone !== "undefined"
+    ? structuredClone(ctx)
+    : JSON.parse(JSON.stringify(ctx));
 }
 
 /**

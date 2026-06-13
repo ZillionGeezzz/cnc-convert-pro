@@ -158,10 +158,33 @@ function maybeAddComment(
 
 /**
  * Tracks modal state to emit codes only on change.
+ *
+ * Unlike the standalone StateTracker, EmissionTracker initializes from
+ * the MachineStateMachine's context so that the initial machine state
+ * (G90, G21, G17, etc.) is already considered "emitted."
+ *
+ * This prevents redundant modal code emission:
+ * - If the machine starts in G90, the first G90 block won't emit "G90"
+ * - If a later block changes to G91, "G91" will be emitted
+ * - If a later block changes back to G90, "G90" will be emitted
  */
-class StateTracker {
+class EmissionTracker {
   private state: Record<string, string | null> = {};
   private currentTool: number | null = null;
+
+  constructor(ctx?: import("./state/types").MachineContext) {
+    if (ctx) {
+      this.state = {
+        motion: ctx.modalG.motion,
+        plane: ctx.modalG.plane,
+        distance: ctx.modalG.distance,
+        units: ctx.modalG.units,
+        cutter: ctx.modalG.cutterComp,
+        feedMode: ctx.modalG.feedMode,
+        workOffset: ctx.modalG.workOffset,
+      };
+    }
+  }
 
   hasChanged(key: string, value: string | null): boolean {
     if (this.state[key] !== value) {
@@ -177,6 +200,22 @@ class StateTracker {
 
   setTool(t: number | null): void {
     this.currentTool = t;
+  }
+
+  /**
+   * Update the emission tracker based on a context delta.
+   * Marks any changed modal values as needing re-emission.
+   */
+  processDelta(delta?: Record<string, any>): void {
+    if (!delta) return;
+    const modalDelta = (delta as any).modalG;
+    if (!modalDelta) return;
+
+    // Invalidate our state for keys that changed in the delta
+    // so that hasChanged will return true for them
+    for (const key of Object.keys(modalDelta)) {
+      (this.state as any)[key] = null; // Force re-emission
+    }
   }
 
   reset(): void {
@@ -196,7 +235,7 @@ function generateSiemens(
   machine?: MachineStateMachine,
 ): string {
   const lines: string[] = [];
-  const state = new StateTracker();
+  const state = new EmissionTracker(machine?.context);
   const ctx = machine?.context;
   const progName = options?.programNumber ? `O${String(options.programNumber).padStart(4, "0")}` : "PROGRAM";
 
@@ -378,7 +417,7 @@ function generateSiemens(
 
 function emitMotionSiemens(
   block: NeutralIRBlock,
-  state: StateTracker,
+  state: EmissionTracker,
   gCode: string,
   format: ControllerFormat,
 ): string {
@@ -458,7 +497,7 @@ function generateFanuc(
   machine?: MachineStateMachine,
 ): string {
   const lines: string[] = [];
-  const state = new StateTracker();
+  const state = new EmissionTracker(machine?.context);
   const ctx = machine?.context;
   const progNum = options?.programNumber || 1;
   const useDecimal = format === "haas";
@@ -652,7 +691,7 @@ function generateFanuc(
 
 function emitMotionFanuc(
   block: NeutralIRBlock,
-  state: StateTracker,
+  state: EmissionTracker,
   gCode: string,
   format: ControllerFormat,
   useDecimal: boolean,
@@ -726,7 +765,7 @@ function generateHeidenhain(
   machine?: MachineStateMachine,
 ): string {
   const lines: string[] = [];
-  const state = new StateTracker();
+  const state = new EmissionTracker(machine?.context);
   const progName = options?.programNumber ? `PGM_${String(options.programNumber).padStart(4, "0")}` : "PROGRAM";
 
   for (let i = 0; i < blocks.length; i++) {
@@ -967,7 +1006,7 @@ function generateMazak(
 
   // Mazatrol / Smooth: conversational format
   const lines: string[] = [];
-  const state = new StateTracker();
+  const state = new EmissionTracker(machine?.context);
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];

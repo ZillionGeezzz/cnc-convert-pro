@@ -1495,14 +1495,22 @@ export function generateToolProgram(
 }
 
 function getThreadPitch(tool: ToolDefinition): number {
-  if (tool.name.includes("M3")) return 0.5;
-  if (tool.name.includes("M6")) return 1.0;
-  if (tool.name.includes("M8")) return 1.25;
-  if (tool.name.includes("M10")) return 1.5;
-  if (tool.name.includes("M12")) return 1.75;
-  if (tool.name.includes("M16")) return 2.0;
-  if (tool.name.includes("M20")) return 2.5;
-  if (tool.name.includes("1/4")) return 0.635;
+  const name = tool.name;
+
+  // Use regex word boundaries to avoid matching "M30" with "M3"
+  if (/\bM3\b/.test(name)) return 0.5;
+  if (/\bM6\b/.test(name))  return 1.0;
+  if (/\bM8\b/.test(name))  return 1.25;
+  if (/\bM10\b/.test(name)) return 1.5;
+  if (/\bM12\b/.test(name)) return 1.75;
+  if (/\bM16\b/.test(name)) return 2.0;
+  if (/\bM20\b/.test(name)) return 2.5;
+  if (/\b1\/4\b/.test(name)) return 0.635;
+
+  // Fallback: try to extract the pitch from an "M<N>×<P>" pattern
+  const metricMatch = name.match(/M(\d+)[×x]([\d.]+)/);
+  if (metricMatch) return parseFloat(metricMatch[2]);
+
   return 1.0;
 }
 
