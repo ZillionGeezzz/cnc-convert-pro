@@ -1,3 +1,18 @@
+/**
+ * CNC Converter Pipeline.
+ *
+ * Pipeline: Parse → Normalize → State Machine → Safety Check → Target Convert → Generate
+ *
+ * The converter now works through a NeutralIRBlock intermediate representation:
+ * 1. Parse input format → CNCBlock[]
+ * 2. Normalize CNCBlock[] → NeutralIRBlock[]
+ * 3. Run MachineStateMachine to track modal state
+ * 4. Run SafetyValidator to check for issues
+ * 5. Apply target-specific IR transformations
+ * 6. Generate target-format string from IR blocks
+ * 7. Inject audit trail comments
+ */
+
 import {
   CNCBlock,
   CNCProgram,
@@ -6,270 +21,16 @@ import {
   ControllerFormat,
 } from "./types";
 import { parseProgram } from "./parsers";
+import { normalizeProgram } from "./ir/normalizer";
+import { NeutralIRBlock, createIRBlock } from "./ir/types";
+import { MachineStateMachine } from "./state/machine";
+import { SafetyValidator } from "./safety/validator";
+import { AuditTrail } from "./audit/trail";
+import { getControllerFamily } from "./ir/family";
 import { generateProgram } from "./generators";
 
-/** Siemens G-code to standard Fanuc-style G-code mapping */
-const SIEMENS_TO_STANDARD_G: Record<string, string> = {
-  G0: "G00", G1: "G01", G2: "G02", G3: "G03", G4: "G04",
-  G33: "G33", G40: "G40", G41: "G41", G42: "G42",
-  G53: "G53", G54: "G54", G55: "G55", G56: "G56", G57: "G57",
-  G60: "G60", G63: "G63", G64: "G64",
-  G90: "G90", G91: "G91", G94: "G94", G95: "G95", G96: "G96", G97: "G97",
-  G500: "G54", // G500 = disable offsets → G54
-};
-
-/** Standard to Siemens G-code mapping */
-const STANDARD_TO_SIEMENS_G: Record<string, string> = {
-  G00: "G0", G01: "G1", G02: "G2", G03: "G3", G04: "G4",
-};
-
 /**
- * Map standard Fanuc G-codes to Heidenhain equivalent
- */
-const STANDARD_TO_HEIDENHAIN: Record<string, string> = {
-  G00: "L", G01: "L", G02: "CR", G03: "CR",
-  G90: "MM", G91: "INCH",
-};
-
-/**
- * Map standard Fanuc G-codes to Mazak equivalent
- */
-const STANDARD_TO_MAZAK: Record<string, string> = {
-  G00: "G00", G01: "G01", G02: "G02", G03: "G03",
-};
-
-/**
- * Convert blocks between formats with semantic transformations
- */
-function convertBlocks(
-  program: CNCProgram,
-  targetFormat: ControllerFormat,
-): CNCProgram {
-  const sourceFamily = getControllerFamily(program.sourceFormat);
-  const targetFamily = getControllerFamily(targetFormat);
-  const convertedBlocks: CNCBlock[] = [];
-
-  for (const block of program.blocks) {
-    const newBlock: CNCBlock = {
-      ...block,
-      gCodes: [...(block.gCodes || [])],
-      mCodes: [...(block.mCodes || [])],
-      axes: { ...(block.axes || {}) },
-      qParams: { ...(block.qParams || {}) },
-      cycleParams: [...(block.cycleParams || [])],
-      addresses: { ...(block.addresses || {}) },
-    };
-
-    // Siemens → anything
-    if (sourceFamily === "siemens" && targetFamily !== "siemens") {
-      convertSiemensToStandard(newBlock);
-    }
-
-    // Anything → Siemens
-    if (targetFamily === "siemens" && sourceFamily !== "siemens") {
-      convertStandardToSiemens(newBlock);
-    }
-
-    // Heidenhain → anything
-    if (sourceFamily === "heidenhain" && targetFamily !== "heidenhain") {
-      convertHeidenhainToStandard(newBlock);
-    }
-
-    // Anything → Heidenhain
-    if (targetFamily === "heidenhain" && sourceFamily !== "heidenhain") {
-      convertStandardToHeidenhain(newBlock);
-    }
-
-    // Mazak specific
-    if (sourceFamily === "mazak" && targetFamily !== "mazak") {
-      convertMazakToStandard(newBlock);
-    }
-
-    // Anything → Mazak (for Mazatrol/Smooth, handle EIA separately)
-    if (targetFamily === "mazak" && sourceFamily !== "mazak") {
-      convertStandardToMazak(newBlock);
-    }
-
-    // Okuma specific
-    if (sourceFamily === "okuma" && targetFamily !== "okuma") {
-      convertStandardToSiemens(newBlock);
-    }
-
-    // Fagor specific
-    if (sourceFamily === "fagor" && targetFamily !== "fagor") {
-      convertStandardToSiemens(newBlock);
-    }
-
-    // Bosch (Siemens-like)
-    if (sourceFamily === "bosch" && targetFamily === "siemens") {
-      // Already compatible
-    }
-
-    convertedBlocks.push(newBlock);
-  }
-
-  return {
-    ...program,
-    blocks: convertedBlocks,
-    sourceFormat: targetFormat,
-  };
-}
-
-function getControllerFamily(format: ControllerFormat): string {
-  if (format.startsWith("siemens")) return "siemens";
-  if (format.startsWith("mitsubishi")) return "fanuc";
-  if (format.startsWith("fanuc")) return "fanuc";
-  if (format.startsWith("heidenhain")) return "heidenhain";    if (format.startsWith("mazak")) return "mazak";
-  if (format === "okuma-osp") return "okuma";
-  if (format === "haas") return "fanuc";
-  if (format === "brother-speedio") return "fanuc";
-  if (format === "fagor-8055") return "fagor";
-  if (format === "bosch-mtx") return "bosch";
-  return "fanuc";
-}
-
-function convertSiemensToStandard(block: CNCBlock): void {
-  // Map G-codes
-  block.gCodes = block.gCodes.map((g) => SIEMENS_TO_STANDARD_G[g] || g);
-
-  // Keep cycle info as it will be handled by generators
-  if (block.toolName) {
-    block.comment = block.comment
-      ? `Tool: ${block.toolName}; ${block.comment}`
-      : `Tool: ${block.toolName}`;
-  }
-}
-
-function convertStandardToSiemens(block: CNCBlock): void {
-  // Map G-codes
-  block.gCodes = block.gCodes.map((g) => STANDARD_TO_SIEMENS_G[g] || g);
-
-  // Detect fixed cycles (G81-G89) and convert to Siemens cycles
-  const gNum = block.gCodes[0] ? parseInt(block.gCodes[0].replace("G", ""), 10) : -1;
-
-  if (!isNaN(gNum) && gNum >= 81 && gNum <= 89) {
-    const cycleName = getSiemensCycleName(gNum);
-    const rfp = (block.addresses["R"] as number) || 10;
-    const dp = Math.abs(block.axes["Z"] || 10);
-    const sdip = 1;
-
-    let cycleCall: string;
-    switch (gNum) {
-      case 81:
-        cycleCall = `CYCLE81(${rfp},${rfp - sdip},${sdip},${dp})`;
-        break;
-      case 82:
-        cycleCall = `CYCLE82(${rfp},${rfp - sdip},${sdip},${dp},0)`; // Dwell at DP
-        break;
-      case 83:
-        cycleCall = `CYCLE83(${rfp},${rfp - sdip},${sdip},${dp},0,${Math.min(dp / 2, 3)},,${(block.addresses["Q"] as number) || 3})`;
-        break;
-      case 84:
-        cycleCall = `CYCLE84(${rfp},${rfp - sdip},${sdip},${dp},0,,3,1.5,,,,)`;
-        break;
-      case 85:
-        cycleCall = `CYCLE85(${rfp},${rfp - sdip},${sdip},${dp})`;
-        break;
-      default:
-        cycleCall = `; Fixed cycle G${gNum} — manual conversion needed`;
-        break;
-    }
-
-    block.siemensCycleCall = cycleCall;
-    block.cycle = cycleName;
-  }
-}
-
-function getSiemensCycleName(gNum: number): string {
-  const map: Record<number, string> = {
-    81: "CYCLE81", 82: "CYCLE82", 83: "CYCLE83", 84: "CYCLE84",
-    85: "CYCLE85", 86: "CYCLE86", 87: "CYCLE87", 88: "CYCLE88", 89: "CYCLE89",
-  };
-  return map[gNum] || "CYCLE81";
-}
-
-function convertHeidenhainToStandard(block: CNCBlock): void {
-  // Heidenhain L moves → standard G-code
-  if (block.heidenhainCommand === "L") {
-    if (block.addresses["R0"] !== undefined) {
-      block.gCodes = ["G00"];
-    } else {
-      block.gCodes = ["G01"];
-    }
-  }
-
-  // TOOL CALL → T word
-  if (block.heidenhainCommand === "TOOL CALL" && block.toolNumber) {
-    block.gCodes = ["G00"];
-    block.mCodes = ["M6"];
-  }
-}
-
-function convertStandardToHeidenhain(block: CNCBlock): void {
-  // G0/G1 → L move
-  const gNum = block.gCodes[0] ? parseInt(block.gCodes[0].replace("G", ""), 10) : -1;
-  if (!isNaN(gNum) && (gNum === 0 || gNum === 1)) {
-    block.heidenhainCommand = "L";
-    if (gNum === 0) {
-      block.addresses["R0"] = 1; // Rapid traverse
-    }
-    block.gCodes = [];
-  }
-
-  // G81-G89 → CYCL DEF
-  if (!isNaN(gNum) && gNum >= 81 && gNum <= 89) {
-    const heidenhainCycles: Record<number, string> = {
-      81: "200", 82: "201", 83: "202", 84: "203",
-      85: "204", 86: "205", 87: "206", 88: "207", 89: "208",
-    };
-    block.cycle = heidenhainCycles[gNum] || "200";
-    block.heidenhainCommand = "CYCL DEF";
-
-    // Extract Q parameters from cycle
-    const z = Math.abs(block.axes["Z"] || 10);
-    const r = (block.addresses["R"] as number) || 2;
-    const q = (block.addresses["Q"] as number) || 3;
-    block.qParams = {
-      "QL200": r,     // Set-up clearance
-      "QL201": -z,    // Depth
-      "QL202": 2,     // Feed
-      "QL210": q,     // Peck depth
-    };
-    block.gCodes = [];
-  }
-
-  // Tool change → TOOL CALL
-  if (block.toolNumber !== undefined && block.heidenhainCommand !== "TOOL CALL") {
-    block.heidenhainCommand = "TOOL CALL";
-    block.gCodes = [];
-  }
-}
-
-function convertMazakToStandard(block: CNCBlock): void {
-  // Mazatrol section headers → comments
-  if (block.addresses["section"]) {
-    block.comment = block.comment
-      ? `Mazatrol: ${block.addresses["section"]}; ${block.comment}`
-      : `Mazatrol: ${block.addresses["section"]}`;
-  }
-}
-
-function convertStandardToMazak(block: CNCBlock): void {
-  // Heidenhain L moves → standard G-code (already handled by convertHeidenhainToStandard)
-  // Siemens cycles → already converted by convertSiemensToStandard
-  // For Mazak EIA/ISO (standard G-code), blocks pass through as-is
-  // For Mazak Mazatrol/Smooth, the generator handles conversational formatting
-  
-  // Handle any remaining Heidenhain-specific items
-  if (block.heidenhainCommand === "TOOL CALL" && block.toolNumber) {
-    block.gCodes = ["G00"];
-    block.mCodes = ["M6"];
-    block.heidenhainCommand = undefined;
-  }
-}
-
-/**
- * Main conversion function: parse → convert blocks → generate output
+ * Main conversion function: parse → normalize → validate → generate
  */
 export function convertProgram(
   input: string,
@@ -280,43 +41,221 @@ export function convertProgram(
 
   // Step 1: Parse input
   const parsed = parseProgram(input, options.sourceFormat);
-  errors.push(
-    ...parsed.errors.map((e) => ({
-      ...e,
-      severity: e.severity as "warning" | "error",
-    })),
-  );
-
-  // Step 2: Convert (if formats differ)
-  let converted: CNCProgram;
-  if (options.sourceFormat === options.targetFormat) {
-    converted = parsed;
-    converted.sourceFormat = options.targetFormat;
-  } else {
-    converted = convertBlocks(parsed, options.targetFormat);
+  for (const e of parsed.errors) {
+    if (e.severity === "error") errors.push(e);
+    else warnings.push(e);
   }
 
-  // Step 3: Generate output
-  const output = generateProgram(converted, options.targetFormat, options);
+  // Step 2: Normalize to IR
+  const irBlocks = normalizeProgram(parsed.blocks, options.sourceFormat);
 
-  // Check for cross-family conversions that need warnings
+  // Step 3: Run MachineContext state machine
+  const machine = new MachineStateMachine(options.sourceFormat);
+  for (const block of irBlocks) {
+    machine.step(block);
+  }
+
+  // Step 4: Safety validation
+  const validator = new SafetyValidator();
+  const safetyIssues = validator.validate(irBlocks);
+  for (const issue of safetyIssues) {
+    const entry = {
+      line: issue.blockIndex + 1,
+      message: issue.message,
+      severity: issue.severity,
+    };
+    if (issue.severity === "error") errors.push(entry);
+    else warnings.push(entry);
+  }
+
+  // Step 5: Apply target-specific IR transformations
+  const transformed = transformForTarget(irBlocks, options.sourceFormat, options.targetFormat);
+
+  // Step 6: Generate target output
+  const output = generateProgram(
+    transformed,
+    options.targetFormat,
+    options,
+    machine,
+  );
+
+  // Step 7: Collect audit trail
+  const audit = new AuditTrail(true);
+  audit.collect(transformed);
+  const auditSummary = audit.generateSummary(options.targetFormat, options.sourceFormat);
+
+  // Prepend audit summary as a comment block
+  const finalOutput = auditSummary
+    ? auditSummary + "\n" + output
+    : output;
+
+  // Step 8: Add cross-family warning if applicable
   if (options.sourceFormat !== options.targetFormat) {
     const sourceFamily = getControllerFamily(options.sourceFormat);
     const targetFamily = getControllerFamily(options.targetFormat);
     if (sourceFamily !== targetFamily) {
       warnings.push({
         line: 0,
-        message: `Converting between different controller families (${sourceFamily} → ${targetFamily}). Some cycles and features may need manual adjustment.`,
+        message: `Cross-family conversion (${sourceFamily} → ${targetFamily}). Some cycles and features may need manual adjustment.`,
         severity: "warning",
       });
     }
   }
 
+  // Reconstruct a CNCProgram for the result (use original blocks + target format)
+  const program: CNCProgram = {
+    blocks: parsed.blocks,
+    sourceFormat: options.targetFormat,
+    errors: parsed.errors,
+  };
+
   return {
-    success: errors.length === 0 || errors.every((e) => e.severity === "warning"),
-    program: converted,
-    output,
-    errors: errors.filter((e) => e.severity === "error"),
-    warnings: [...warnings, ...errors.filter((e) => e.severity === "warning")],
+    success: errors.length === 0,
+    program,
+    output: finalOutput,
+    errors,
+    warnings,
+  };
+}
+
+// Inline cycle mapping lookup (avoids ESM require issue)
+function lookupCycleMappingInline(
+  sourceCycle: string,
+  sourceFamily: string,
+  targetFamily: string,
+): { targetCycle: string; confidence: "exact" | "approximate" | "manual-review-needed"; note: string } | undefined {
+  const CYCLE_MAPPINGS = [
+    // Siemens → Fanuc
+    { sc: "CYCLE81", sf: "siemens", tf: "fanuc", tc: "G81", conf: "exact" as const, note: "Simple drilling" },
+    { sc: "CYCLE82", sf: "siemens", tf: "fanuc", tc: "G82", conf: "exact" as const, note: "Drilling with dwell" },
+    { sc: "CYCLE83", sf: "siemens", tf: "fanuc", tc: "G83", conf: "exact" as const, note: "Peck drilling" },
+    { sc: "CYCLE84", sf: "siemens", tf: "fanuc", tc: "G84", conf: "exact" as const, note: "Tapping" },
+    { sc: "CYCLE85", sf: "siemens", tf: "fanuc", tc: "G85", conf: "exact" as const, note: "Boring, feed out" },
+    { sc: "CYCLE86", sf: "siemens", tf: "fanuc", tc: "G86", conf: "approximate" as const, note: "Boring, spindle stop" },
+    // Heidenhain → Fanuc
+    { sc: "CYCL DEF 200", sf: "heidenhain", tf: "fanuc", tc: "G81", conf: "exact" as const, note: "Simple drilling" },
+    { sc: "CYCL DEF 201", sf: "heidenhain", tf: "fanuc", tc: "G82", conf: "exact" as const, note: "Reaming / dwelling" },
+    { sc: "CYCL DEF 202", sf: "heidenhain", tf: "fanuc", tc: "G83", conf: "exact" as const, note: "Peck drilling" },
+    { sc: "CYCL DEF 203", sf: "heidenhain", tf: "fanuc", tc: "G84", conf: "exact" as const, note: "Rigid tapping" },
+    // Heidenhain → Siemens
+    { sc: "CYCL DEF 200", sf: "heidenhain", tf: "siemens", tc: "CYCLE81", conf: "exact" as const, note: "Simple drilling" },
+    { sc: "CYCL DEF 202", sf: "heidenhain", tf: "siemens", tc: "CYCLE83", conf: "exact" as const, note: "Peck drilling" },
+    // Fanuc → Siemens
+    { sc: "G81", sf: "fanuc", tf: "siemens", tc: "CYCLE81", conf: "exact" as const, note: "Simple drilling" },
+    { sc: "G82", sf: "fanuc", tf: "siemens", tc: "CYCLE82", conf: "exact" as const, note: "Drilling with dwell" },
+    { sc: "G83", sf: "fanuc", tf: "siemens", tc: "CYCLE83", conf: "exact" as const, note: "Peck drilling" },
+    { sc: "G84", sf: "fanuc", tf: "siemens", tc: "CYCLE84", conf: "exact" as const, note: "Tapping" },
+    // Fanuc → Heidenhain
+    { sc: "G81", sf: "fanuc", tf: "heidenhain", tc: "CYCL DEF 200", conf: "exact" as const, note: "Simple drilling" },
+    { sc: "G83", sf: "fanuc", tf: "heidenhain", tc: "CYCL DEF 202", conf: "exact" as const, note: "Peck drilling" },
+    { sc: "G84", sf: "fanuc", tf: "heidenhain", tc: "CYCL DEF 203", conf: "exact" as const, note: "Tapping" },
+  ];
+  const match = CYCLE_MAPPINGS.find(
+    (m) => m.sc.toUpperCase() === sourceCycle.toUpperCase() && m.sf === sourceFamily && m.tf === targetFamily,
+  );
+  if (!match) return undefined;
+  return { targetCycle: match.tc, confidence: match.conf, note: match.note };
+}
+
+// ==========================================
+// IR TRANSFORMATIONS FOR TARGET
+// ==========================================
+
+/**
+ * Apply target-format-specific transformations to IR blocks.
+ * This handles:
+ * - Cycle mapping (Siemens CYCLE81 → Fanuc G81 → Heidenhain CYCL DEF 200)
+ * - Motion type adaptation
+ * - Comment style adaptation
+ */
+function transformForTarget(
+  blocks: NeutralIRBlock[],
+  sourceFormat: ControllerFormat,
+  targetFormat: ControllerFormat,
+): NeutralIRBlock[] {
+  if (sourceFormat === targetFormat) return blocks;
+
+  const sourceFamily = getControllerFamily(sourceFormat);
+  const targetFamily = getControllerFamily(targetFormat);
+
+  return blocks.map((block) => {
+    let transformed = { ...block, transformations: [...block.transformations], audit: [...block.audit] };
+
+    // Apply cycle transformations
+    if (block.cycle || block.type.startsWith("cycle-")) {
+      transformed = transformCycle(transformed, sourceFamily, targetFamily, sourceFormat, targetFormat);
+    }
+
+    // Siemens-specific: T="name" → comment
+    if (sourceFamily === "siemens" && block.toolName && targetFamily !== "siemens") {
+      const nameComment = `Tool: ${block.toolName}`;
+      transformed.comment = transformed.comment
+        ? `${nameComment}; ${transformed.comment}`
+        : nameComment;
+      transformed.transformations.push({
+        ruleId: "SIEMENS_TOOL_NAME",
+        description: `Converted Siemens tool name to comment: ${block.toolName}`,
+        source: `T="${block.toolName}"`,
+        target: `;${nameComment}`,
+      });
+    }
+
+    // Heidenhain R0 → Fanuc G00 marker
+    if (sourceFamily === "heidenhain" && block.type === "rapid" && targetFamily !== "heidenhain") {
+      // Already mapped to "rapid" by normalizer, but ensure the generator gets it
+    }
+
+    return transformed;
+  });
+}
+
+/**
+ * Transform a cycle block from source to target format.
+ */
+function transformCycle(
+  block: NeutralIRBlock,
+  sourceFamily: string,
+  targetFamily: string,
+  sourceFormat: ControllerFormat,
+  targetFormat: ControllerFormat,
+): NeutralIRBlock {
+  if (!block.cycle) return block;
+
+  const cycle = block.cycle;
+  const sourceCycleId = cycle.originalCycleId || "";
+  const audit: typeof block.audit = [...block.audit];
+  const transformations = [...block.transformations];
+
+  // Look up cycle mapping
+  // Use inline lookup to avoid ESM require issue
+  const mapping = lookupCycleMappingInline(sourceCycleId, sourceFamily, targetFamily);
+
+  if (mapping) {
+    audit.push({
+      ruleId: `CYCLE_MAP_${sourceCycleId}_TO_${mapping.targetCycle}`,
+      description: `Mapped ${sourceCycleId} → ${mapping.targetCycle}`,
+      source: sourceCycleId,
+      target: mapping.targetCycle,
+      confidence: mapping.confidence,
+    });
+    transformations.push({
+      ruleId: `CYCLE_MAP_${sourceCycleId}_TO_${mapping.targetCycle}`,
+      description: mapping.note,
+      source: `${sourceCycleId}(${cycle.originalParams || ""})`,
+      target: mapping.targetCycle,
+    });
+  }
+
+  // Set the target cycle ID for the generator to use
+  const targetCycleId = mapping?.targetCycle || cycle.originalCycleId || "";
+
+  return {
+    ...block,
+    cycle: {
+      ...cycle,
+      originalCycleId: targetCycleId,
+    },
+    audit,
+    transformations,
   };
 }
