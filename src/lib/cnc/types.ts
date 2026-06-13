@@ -15,7 +15,8 @@ export type ControllerFormat =
   | "haas"
   | "brother-speedio"
   | "fagor-8055"
-  | "bosch-mtx";
+  | "bosch-mtx"
+  | "mazak-eia";
 
 export interface ControllerInfo {
   id: ControllerFormat;
@@ -147,6 +148,14 @@ export const CONTROLLERS: ControllerInfo[] = [
     format: "gcode-extended",
     color: "#B71C1C",
   },
+  {
+    id: "mazak-eia",
+    name: "EIA/ISO (G-code Mode)",
+    manufacturer: "Mazak",
+    description: "Mazak EIA/ISO — standard G-code programming on Mazak controls (Mazatrol Matrix, Nexus, Smooth)",
+    format: "gcode-iso",
+    color: "#00897B",
+  },
 ];
 
 export type ControllerFamily =
@@ -171,6 +180,7 @@ export const getFamilyForFormat = (format: ControllerFormat): ControllerFamily =
     "heidenhain-itnc530": "heidenhain",
     "mazak-mazatrol": "mazak",
     "mazak-smooth": "mazak",
+    "mazak-eia": "mazak",
     "okuma-osp": "okuma",
     "mitsubishi-m80": "mitsubishi",
     "mitsubishi-m70": "mitsubishi",

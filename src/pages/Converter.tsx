@@ -67,6 +67,7 @@ export default function Converter() {
   const [input, setInput] = useState(DEFAULT_SIEMENS);
   const [result, setResult] = useState<ConversionResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Auto-convert on input change or format change
   useEffect(() => {
@@ -267,27 +268,98 @@ export default function Converter() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
-            className="mt-6 flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4"
           >
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5">
-                <FileCode className="w-3.5 h-3.5" />
-                {result.program.blocks.length} blocks
+            <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4">
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5">
+                  <FileCode className="w-3.5 h-3.5" />
+                  {result.program.blocks.length} blocks
+                </span>
+                {result.errors.length > 0 && (
+                  <button
+                    onClick={() => setShowDiagnostics(!showDiagnostics)}
+                    className="text-destructive hover:underline cursor-pointer inline-flex items-center gap-1 transition-opacity"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" />
+                    {result.errors.length} error{result.errors.length !== 1 ? "s" : ""}
+                  </button>
+                )}
+                {result.warnings.length > 0 && (
+                  <button
+                    onClick={() => setShowDiagnostics(!showDiagnostics)}
+                    className="text-amber-600 dark:text-amber-400 hover:underline cursor-pointer inline-flex items-center gap-1 transition-opacity"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                    {result.warnings.length} warning{result.warnings.length !== 1 ? "s" : ""}
+                  </button>
+                )}
+              </div>
+              <span className="text-zinc-400 dark:text-zinc-600">
+                {result.success ? "Conversion complete" : "Check diagnostics below"}
               </span>
-              {result.errors.length > 0 && (
-                <span className="text-destructive">
-                  {result.errors.length} error{result.errors.length !== 1 ? "s" : ""}
-                </span>
-              )}
-              {result.warnings.length > 0 && (
-                <span className="text-amber-600 dark:text-amber-400">
-                  {result.warnings.length} warning{result.warnings.length !== 1 ? "s" : ""}
-                </span>
-              )}
             </div>
-            <span className="text-zinc-400 dark:text-zinc-600">
-              {result.success ? "Conversion complete" : "Check errors above"}
-            </span>
+
+            {/* Expandable diagnostic details */}
+            {showDiagnostics && (result.warnings.length > 0 || result.errors.length > 0) && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="mt-3 rounded-lg border border-border bg-zinc-50 dark:bg-zinc-900 overflow-hidden"
+              >
+                <div className="px-4 py-3 space-y-2 max-h-60 overflow-y-auto">
+                  {result.errors.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-destructive mb-2 uppercase tracking-wider">
+                        Errors
+                      </h4>
+                      {result.errors.map((err, idx) => (
+                        <div
+                          key={`err-${idx}`}
+                          className="flex items-start gap-2 py-1.5 text-xs border-b border-border/50 last:border-0"
+                        >
+                          <span className="text-destructive shrink-0 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" />
+                          </span>
+                          <div>
+                            <span className="font-mono text-[11px] text-muted-foreground">
+                              Line {err.line}
+                            </span>
+                            <p className="text-foreground/80 mt-0.5">{err.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {result.warnings.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2 uppercase tracking-wider">
+                        Warnings
+                      </h4>
+                      {result.warnings.map((warn, idx) => (
+                        <div
+                          key={`warn-${idx}`}
+                          className="flex items-start gap-2 py-1.5 text-xs border-b border-border/50 last:border-0"
+                        >
+                          <span className="text-amber-500 shrink-0 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                          </span>
+                          <div>
+                            {warn.line > 0 && (
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                Line {warn.line}
+                              </span>
+                            )}
+                            <p className="text-foreground/80 mt-0.5">{warn.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </main>

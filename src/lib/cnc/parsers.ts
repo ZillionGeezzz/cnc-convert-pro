@@ -616,6 +616,19 @@ function parseMazakSmooth(raw: string): CNCProgram {
 }
 
 /**
+ * Parse Mazak EIA/ISO (standard G-code mode on Mazak controls)
+ * Mostly Fanuc-style, with Mazak-specific handling for:
+ * - % headers without O-numbers
+ * - Mazak-specific M-codes (M72, M73, etc.)
+ * - PAL, PALLET, etc.
+ */
+function parseMazakEIA(raw: string): CNCProgram {
+  const program = parseFanucStyle(raw);
+  program.sourceFormat = "mazak-eia";
+  return program;
+}
+
+/**
  * Fagor 8055 parser
  * ISO + conversational (similar to Heidenhain in some ways)
  */
@@ -741,6 +754,8 @@ export function parseProgram(raw: string, format: ControllerFormat): CNCProgram 
       return parseMazakMazatrol(raw);
     case "mazak-smooth":
       return parseMazakSmooth(raw);
+    case "mazak-eia":
+      return parseMazakEIA(raw);
     case "okuma-osp":
       return parseOkumaOSP(raw);
     case "haas":

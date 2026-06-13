@@ -115,7 +115,7 @@ function getControllerFamily(format: ControllerFormat): string {
   if (format.startsWith("mitsubishi")) return "fanuc";
   if (format.startsWith("fanuc")) return "fanuc";
   if (format.startsWith("heidenhain")) return "heidenhain";
-  if (format.startsWith("mazak")) return "mazak";
+  if (format === "mazak-mazatrol" || format === "mazak-smooth") return "mazak";
   if (format === "okuma-osp") return "okuma";
   if (format === "haas") return "fanuc";
   if (format === "brother-speedio") return "fanuc";
