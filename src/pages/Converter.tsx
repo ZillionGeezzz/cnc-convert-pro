@@ -106,9 +106,11 @@ export default function Converter() {
   }, [result, targetFormat]);
 
   const handleReset = useCallback(() => {
-    setInput(sourceFormat === "siemens-840d" ? DEFAULT_SIEMENS : DEFAULT_MITSUBISHI);
-    setResult(null);
-  }, [sourceFormat]);
+    const defaultCode = sourceFormat === "siemens-840d" ? DEFAULT_SIEMENS : DEFAULT_MITSUBISHI;
+    setInput(defaultCode);
+    const conversionResult = convertProgram(defaultCode, { sourceFormat, targetFormat });
+    setResult(conversionResult);
+  }, [sourceFormat, targetFormat]);
 
   const sourceLabel = CONTROLLERS.find((c) => c.id === sourceFormat)?.name || sourceFormat;
   const targetLabel = CONTROLLERS.find((c) => c.id === targetFormat)?.name || targetFormat;
