@@ -15,6 +15,7 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Converter = lazy(() => import("./pages/Converter.tsx"));
 const Tools = lazy(() => import("./pages/Tools.tsx"));
+const Machines = lazy(() => import("./pages/Machines.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -67,6 +68,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/auth" element={<AuthPage redirectAfterAuth="/converter" />} />
               <Route path="/converter" element={<Converter />} />
               <Route path="/tools" element={<Tools />} />
+              <Route path="/machines" element={<Machines />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

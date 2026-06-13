@@ -2,13 +2,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useLocation } from "react-router";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeftRight, Wrench, LogOut, Menu, X } from "lucide-react";
+import { ArrowLeftRight, Wrench, Monitor, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { path: "/", label: "Converter", icon: ArrowLeftRight },
   { path: "/tools", label: "Tool Library", icon: Wrench },
+  { path: "/machines", label: "Machines", icon: Monitor },
 ];
 
 export function MinimalHeader() {
