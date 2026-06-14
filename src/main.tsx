@@ -1,4 +1,4 @@
-import '@vly-ai/integrations';
+import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { InstrumentationProvider } from "@/instrumentation.tsx";
@@ -27,9 +27,81 @@ function RouteLoading() {
   );
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+const CONVEX_URL_ENV_VAR = "VITE_CONVEX_URL";
+const LOCAL_CONVEX_URL = "http://127.0.0.1:3210";
 
+function normalizeConvexUrl(value: string | undefined) {
+  if (!value) return null;
 
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+const configuredConvexUrl = import.meta.env.VITE_CONVEX_URL?.trim();
+const normalizedConvexUrl = normalizeConvexUrl(configuredConvexUrl);
+const useLocalConvexFallback = !configuredConvexUrl && import.meta.env.DEV;
+const activeConvexUrl =
+  normalizedConvexUrl ?? (useLocalConvexFallback ? LOCAL_CONVEX_URL : null);
+
+if (useLocalConvexFallback) {
+  console.warn(
+    `[config] ${CONVEX_URL_ENV_VAR} is not set; using a local Convex fallback in development. Auth and saved tools require a configured Convex deployment.`,
+  );
+} else if (!activeConvexUrl) {
+  console.error(
+    `[config] ${CONVEX_URL_ENV_VAR} is missing or invalid. Set it to an http(s) Convex deployment URL.`,
+  );
+}
+
+const convex = activeConvexUrl
+  ? new ConvexReactClient(
+      activeConvexUrl,
+      useLocalConvexFallback ? { logger: false } : undefined,
+    )
+  : null;
+
+const configurationError = (
+  <div className="min-h-screen flex items-center justify-center bg-background p-6 text-foreground">
+    <div className="max-w-md space-y-3 text-center">
+      <h1 className="text-2xl font-semibold tracking-tight">
+        Configuration required
+      </h1>
+      <p className="text-sm text-muted-foreground">
+        {CONVEX_URL_ENV_VAR} is missing or invalid. Set it to an http(s) Convex
+        deployment URL and restart the app.
+      </p>
+    </div>
+  </div>
+);
+
+const app = convex ? (
+  <ConvexAuthProvider client={convex}>
+    <BrowserRouter>
+      <RouteSyncer />
+      <Suspense fallback={<RouteLoading />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route
+            path="/auth"
+            element={<AuthPage redirectAfterAuth="/converter" />}
+          />
+          <Route path="/converter" element={<Converter />} />
+          <Route path="/tools" element={<Tools />} />
+          <Route path="/machines" element={<Machines />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+    <Toaster />
+  </ConvexAuthProvider>
+) : (
+  configurationError
+);
 
 function RouteSyncer() {
   const location = useLocation();
@@ -54,27 +126,9 @@ function RouteSyncer() {
   return null;
 }
 
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <VlyToolbar />
-    <InstrumentationProvider>
-      <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/auth" element={<AuthPage redirectAfterAuth="/converter" />} />
-              <Route path="/converter" element={<Converter />} />
-              <Route path="/tools" element={<Tools />} />
-              <Route path="/machines" element={<Machines />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
-      </ConvexAuthProvider>
-    </InstrumentationProvider>
+    <InstrumentationProvider>{app}</InstrumentationProvider>
   </StrictMode>,
 );

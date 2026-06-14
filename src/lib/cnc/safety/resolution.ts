@@ -10,8 +10,7 @@
  * 3. Configure coordinate formatting per target format
  */
 
-import type { ControllerFamily } from "../types";
-import { getControllerFamily } from "../ir/family";
+import { getFamilyForFormat, type ControllerFamily } from "../types";
 import type { ControllerFormat } from "../types";
 
 /**
@@ -69,7 +68,7 @@ export const COORDINATE_DECIMALS: Record<ControllerFamily, number> = {
  * Get the machine resolution for a given controller format.
  */
 export function getResolution(format: ControllerFormat): number {
-  const family = getControllerFamily(format) as ControllerFamily;
+  const family = getFamilyForFormat(format);
   return CONTROL_RESOLUTION_MM[family] ?? 0.001;
 }
 
@@ -77,7 +76,7 @@ export function getResolution(format: ControllerFormat): number {
  * Get the minimum command increment for a given controller format.
  */
 export function getMinIncrement(format: ControllerFormat): number {
-  const family = getControllerFamily(format) as ControllerFamily;
+  const family = getFamilyForFormat(format);
   return MIN_COMMAND_INCREMENT_MM[family] ?? 0.010;
 }
 
@@ -85,7 +84,7 @@ export function getMinIncrement(format: ControllerFormat): number {
  * Get the recommended decimal places for coordinate output.
  */
 export function getDecimals(format: ControllerFormat): number {
-  const family = getControllerFamily(format) as ControllerFamily;
+  const family = getFamilyForFormat(format);
   return COORDINATE_DECIMALS[family] ?? 3;
 }
 

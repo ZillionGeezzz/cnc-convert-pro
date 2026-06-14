@@ -1,5 +1,5 @@
 import type { MachineProfile } from "../types";
-import type { NeutralIRBlock, CycleDefinition } from "../ir/types";
+import type { NeutralIRBlock } from "../ir/types";
 
 /**
  * Safety validation rule interface.
@@ -43,44 +43,47 @@ export const CYCLE_MAPPINGS: CycleMapping[] = [
   // Drilling
   { sourceCycle: "CYCLE81", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G81", confidence: "exact", note: "Simple drilling" },
   { sourceCycle: "CYCLE82", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G82", confidence: "exact", note: "Drilling with dwell" },
-  { sourceCycle: "CYCLE83", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G83", confidence: "exact", note: "Peck drilling" },
-  { sourceCycle: "CYCLE84", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G84", confidence: "exact", note: "Tapping" },
-  { sourceCycle: "CYCLE85", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G85", confidence: "exact", note: "Boring, feed out" },
+  { sourceCycle: "CYCLE83", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G83", confidence: "approximate", note: "Deep-hole drilling parameters simplified" },
+  { sourceCycle: "CYCLE84", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G84", confidence: "approximate", note: "Tapping parameters simplified" },
+  { sourceCycle: "CYCLE85", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G85", confidence: "approximate", note: "Boring feed/retraction parameters simplified" },
   { sourceCycle: "CYCLE86", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G86", confidence: "approximate", note: "Boring, spindle stop, rapid out" },
-  { sourceCycle: "CYCLE87", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G87", confidence: "approximate", note: "Back boring" },
-  { sourceCycle: "CYCLE88", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G88", confidence: "approximate", note: "Boring with dwell, manual retract" },
+  { sourceCycle: "CYCLE87", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G87", confidence: "manual-review-needed", note: "Back boring requires review" },
+  { sourceCycle: "CYCLE88", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G88", confidence: "manual-review-needed", note: "Boring with manual retract requires review" },
   { sourceCycle: "CYCLE89", sourceFamily: "siemens", targetFamily: "fanuc", targetCycle: "G89", confidence: "approximate", note: "Boring with dwell, feed out" },
 
   // Heidenhain → Fanuc
   { sourceCycle: "CYCL DEF 200", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G81", confidence: "exact", note: "Simple drilling" },
-  { sourceCycle: "CYCL DEF 201", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G82", confidence: "exact", note: "Reaming / dwelling" },
-  { sourceCycle: "CYCL DEF 202", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G83", confidence: "exact", note: "Peck drilling" },
-  { sourceCycle: "CYCL DEF 203", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G84", confidence: "exact", note: "Rigid tapping" },
-  { sourceCycle: "CYCL DEF 204", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G85", confidence: "approximate", note: "Boring 1" },
-  { sourceCycle: "CYCL DEF 205", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G86", confidence: "approximate", note: "Boring 2" },
-  { sourceCycle: "CYCL DEF 206", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G87", confidence: "approximate", note: "Boring 3" },
-  { sourceCycle: "CYCL DEF 207", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G88", confidence: "approximate", note: "Boring 4" },
-  { sourceCycle: "CYCL DEF 208", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G89", confidence: "approximate", note: "Boring 5" },
+  { sourceCycle: "CYCL DEF 201", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G85", confidence: "approximate", note: "Reaming mapped to boring/reaming" },
+  { sourceCycle: "CYCL DEF 202", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G85", confidence: "approximate", note: "Boring mapped to basic boring" },
+  { sourceCycle: "CYCL DEF 203", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G83", confidence: "approximate", note: "Universal drilling mapped to peck drilling" },
+  { sourceCycle: "CYCL DEF 204", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G87", confidence: "manual-review-needed", note: "Back boring requires review" },
+  { sourceCycle: "CYCL DEF 205", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G83", confidence: "approximate", note: "Universal pecking mapped to peck drilling" },
+  { sourceCycle: "CYCL DEF 206", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G84", confidence: "approximate", note: "Tapping mapped to Fanuc tapping" },
+  { sourceCycle: "CYCL DEF 207", sourceFamily: "heidenhain", targetFamily: "fanuc", targetCycle: "G84", confidence: "approximate", note: "Rigid tapping mapped to Fanuc tapping" },
 
   // Heidenhain → Siemens
   { sourceCycle: "CYCL DEF 200", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE81", confidence: "exact", note: "Simple drilling" },
-  { sourceCycle: "CYCL DEF 201", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE82", confidence: "exact", note: "Drilling with dwell" },
-  { sourceCycle: "CYCL DEF 202", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE83", confidence: "exact", note: "Peck drilling" },
-  { sourceCycle: "CYCL DEF 203", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE84", confidence: "exact", note: "Rigid tapping" },
-  { sourceCycle: "CYCL DEF 204", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE85", confidence: "exact", note: "Boring 1" },
+  { sourceCycle: "CYCL DEF 201", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE85", confidence: "approximate", note: "Reaming mapped to boring/reaming" },
+  { sourceCycle: "CYCL DEF 202", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE85", confidence: "approximate", note: "Boring mapped to boring cycle" },
+  { sourceCycle: "CYCL DEF 203", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE83", confidence: "approximate", note: "Universal drilling mapped to deep-hole drilling" },
+  { sourceCycle: "CYCL DEF 204", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE87", confidence: "manual-review-needed", note: "Back boring requires review" },
+  { sourceCycle: "CYCL DEF 205", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE83", confidence: "approximate", note: "Universal pecking mapped to deep-hole drilling" },
+  { sourceCycle: "CYCL DEF 206", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE84", confidence: "approximate", note: "Tapping mapped to Siemens tapping" },
+  { sourceCycle: "CYCL DEF 207", sourceFamily: "heidenhain", targetFamily: "siemens", targetCycle: "CYCLE84", confidence: "approximate", note: "Rigid tapping mapped to Siemens tapping" },
 
   // Fanuc → Siemens
   { sourceCycle: "G81", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE81", confidence: "exact", note: "Simple drilling" },
   { sourceCycle: "G82", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE82", confidence: "exact", note: "Drilling with dwell" },
-  { sourceCycle: "G83", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE83", confidence: "exact", note: "Peck drilling" },
-  { sourceCycle: "G84", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE84", confidence: "exact", note: "Tapping" },
-  { sourceCycle: "G85", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE85", confidence: "exact", note: "Boring feed out" },
+  { sourceCycle: "G83", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE83", confidence: "approximate", note: "Peck drilling parameters simplified" },
+  { sourceCycle: "G84", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE84", confidence: "approximate", note: "Tapping parameters simplified" },
+  { sourceCycle: "G85", sourceFamily: "fanuc", targetFamily: "siemens", targetCycle: "CYCLE85", confidence: "approximate", note: "Boring feed out parameters simplified" },
 
   // Fanuc → Heidenhain
   { sourceCycle: "G81", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 200", confidence: "exact", note: "Simple drilling" },
-  { sourceCycle: "G82", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 201", confidence: "exact", note: "Reaming" },
-  { sourceCycle: "G83", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 202", confidence: "exact", note: "Peck drilling" },
-  { sourceCycle: "G84", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 203", confidence: "exact", note: "Tapping" },
+  { sourceCycle: "G82", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 200", confidence: "exact", note: "Drilling with dwell via Q211" },
+  { sourceCycle: "G83", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 203", confidence: "approximate", note: "Peck drilling mapped to universal drilling" },
+  { sourceCycle: "G84", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 206", confidence: "approximate", note: "Tapping mapped to Heidenhain tapping" },
+  { sourceCycle: "G85", sourceFamily: "fanuc", targetFamily: "heidenhain", targetCycle: "CYCL DEF 202", confidence: "approximate", note: "Boring mapped to Heidenhain boring" },
 ];
 
 /**
@@ -201,8 +204,9 @@ export function checkToolChangeWithM6(
   block: NeutralIRBlock,
   _profile: MachineProfile | undefined,
   blockIndex: number,
-  _previousTool?: number | null,
+  previousTool?: number | null,
 ): SafetyIssue | null {
+  void previousTool;
   // This is detected during parsing — the normalizer maps T+M6 → tool-change
   // If a standalone T word appears without M6, checkToolChangeWithM6 flags it
   if (block.type === "tool-definition") {

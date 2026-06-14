@@ -17,7 +17,6 @@ function parseSiemens840d(raw: string): CNCProgram {
   const lines = raw.split("\n");
   const blocks: CNCBlock[] = [];
   const errors: CNCProgram["errors"] = [];
-  let isProgramEnd = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -27,7 +26,6 @@ function parseSiemens840d(raw: string): CNCProgram {
       const block = parseSiemensLine(line, i + 1);
       if (block) {
         blocks.push(block);
-        if (block.isProgramEnd) isProgramEnd = true;
       }
     } catch (e) {
       errors.push({
@@ -47,6 +45,7 @@ function parseSiemens840d(raw: string): CNCProgram {
 }
 
 function parseSiemensLine(line: string, lineNum: number): CNCBlock | null {
+  void lineNum;
   const block: CNCBlock = {
     raw: line,
     gCodes: [],
@@ -166,7 +165,8 @@ function parseFanucStyle(raw: string): CNCProgram {
   };
 }
 
-function parseFanucLine(line: string, _lineNum: number): CNCBlock | null {
+function parseFanucLine(line: string, lineNum: number): CNCBlock | null {
+  void lineNum;
   const block: CNCBlock = {
     raw: line,
     gCodes: [],
@@ -178,7 +178,7 @@ function parseFanucLine(line: string, _lineNum: number): CNCBlock | null {
   };
 
   // Strip comments: (comment) or ; or / (skip block)
-  let commentMatch = line.match(/\(([^)]*)\)/);
+  const commentMatch = line.match(/\(([^)]*)\)/);
   if (commentMatch) {
     block.comment = commentMatch[1].trim();
     line = line.replace(/\([^)]*\)/, "").trim();
@@ -297,7 +297,8 @@ function parseHeidenhainTNC640(raw: string): CNCProgram {
   };
 }
 
-function parseHeidenhainLine(line: string, _lineNum: number): CNCBlock | null {
+function parseHeidenhainLine(line: string, lineNum: number): CNCBlock | null {
+  void lineNum;
   const block: CNCBlock = {
     raw: line,
     gCodes: [],
@@ -370,7 +371,7 @@ function parseHeidenhainLine(line: string, _lineNum: number): CNCBlock | null {
   }
 
   // Q parameters: Q1 = 5, QL, QR, FN...
-  const qParamMatch = line.match(/^Q(\d+)\s*=\s*([\d.-]+)/);
+  const qParamMatch = line.match(/^Q(\d+)\s*=\s*([+-]?\d+(?:\.\d+)?)/);
   if (qParamMatch) {
     block.qParams[`Q${qParamMatch[1]}`] = parseFloat(qParamMatch[2]);
     block.heidenhainCommand = "Q";
@@ -401,6 +402,9 @@ function parseHeidenhainLine(line: string, _lineNum: number): CNCBlock | null {
     // M codes
     const mMatch = line.match(/M(\d+)/i);
     if (mMatch) block.mCodes.push(`M${mMatch[1]}`);
+    if (/\bR0\b/i.test(line)) {
+      block.addresses["R0"] = 0;
+    }
     return block;
   }
 

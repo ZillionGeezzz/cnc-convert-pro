@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveCoordinates } from "./resolver";
 import { createIRBlock } from "./types";
-import type { NeutralIRBlock } from "./types";
-
-function block(overrides: Partial<NeutralIRBlock> = {}): NeutralIRBlock {
-  return createIRBlock("rapid", "G00 X10.0", overrides);
-}
 
 describe("resolveCoordinates", () => {
   describe("absolute mode (G90) — passthrough", () => {
@@ -166,8 +161,10 @@ describe("resolveCoordinates", () => {
       ];
 
       const result = resolveCoordinates(blocks);
+      expect(result.blocks[0].type).toBe("absolute-mode");
       expect(result.blocks[0].transformations.length).toBeGreaterThan(0);
-      expect(result.blocks[0].transformations[0].ruleId).toBe("G91_MODE");
+      expect(result.blocks[0].transformations[0].ruleId).toBe("G91_MODE_TO_G90_OUTPUT");
+      expect(result.blocks[0].audit[0].target).toBe("G90");
     });
   });
 

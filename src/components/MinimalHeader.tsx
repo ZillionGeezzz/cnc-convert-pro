@@ -7,7 +7,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { path: "/", label: "Converter", icon: ArrowLeftRight },
+  { path: "/converter", label: "Converter", icon: ArrowLeftRight },
   { path: "/tools", label: "Tool Library", icon: Wrench },
   { path: "/machines", label: "Machines", icon: Monitor },
 ];
