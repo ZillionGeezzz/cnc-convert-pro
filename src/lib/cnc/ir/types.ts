@@ -17,8 +17,12 @@ export type IRBlockType =
   | "cycle-other"        // Custom cycles
   | "cycle-definition"   // CYCL DEF / cycle parameter definition
   | "cycle-call"         // CYCL CALL / MCALL
+  | "cycle-return-initial" // G98 return to initial plane
+  | "cycle-return-r-plane" // G99 return to R plane
   | "tool-change"        // T M6 / TOOL CALL
   | "tool-definition"    // TOOL DEF
+  | "tool-length-comp"   // G43 H / target-specific length offset activation
+  | "tool-length-comp-off" // G49 / length offset cancel
   | "spindle-forward"    // M3 / M4
   | "spindle-reverse"    // M4
   | "spindle-stop"       // M5
@@ -79,10 +83,24 @@ export interface AxisTarget {
 export interface CycleDefinition {
   /** Semantic type */
   type: "drill" | "peck-drill" | "tap" | "bore" | "ream" | "other";
-  /** Retract plane (R / RFP) */
+  /** Retract plane (R / RTP) */
   retractPlane: number;
+  /** Reference plane / work surface used by target cycle templates */
+  referencePlane?: number;
+  /** Safety clearance above the reference plane */
+  safetyClearance?: number;
   /** Final depth (Z / DP) — positive value = distance below retract plane */
   depth: number;
+  /** Actual post-cycle return plane, distinct from Fanuc R plane when G98 is active */
+  returnPlane?: number;
+  /** Siemens absolute final drilling depth (DP), preserved with source sign */
+  absoluteDepth?: number;
+  /** Final depth relative to reference plane when source distinguishes DP/DPR */
+  relativeDepth?: number;
+  /** Heidenhain workpiece surface coordinate (Q203) */
+  surfaceCoordinate?: number;
+  /** Heidenhain second setup clearance (Q204) */
+  secondSetupClearance?: number;
   /** Dwell at bottom (seconds) */
   dwell?: number;
   /** Peck depth for peck drilling (Q / MID) */
@@ -93,8 +111,12 @@ export interface CycleDefinition {
   chipBreak?: number;
   /** Feed rate for the cycle */
   feedRate?: number;
+  /** Retraction feed rate for cycles that distinguish feed-in/feed-out */
+  retractionFeedRate?: number;
   /** Original controller-specific cycle ID (for audit trail) */
   originalCycleId?: string;
+  /** Source controller-specific cycle ID before family mapping */
+  sourceCycleId?: string;
   /** Original controller-specific cycle parameters as raw string */
   originalParams?: string;
 }

@@ -12,11 +12,7 @@
  * - The AuditTrail injector adds conversion comments
  */
 
-import {
-  NeutralIRBlock,
-  IRBlockType,
-  CycleDefinition,
-} from "./ir/types";
+import type { AxisTarget, NeutralIRBlock } from "./ir/types";
 import type {
   ControllerFormat,
   ConversionOptions,
@@ -28,7 +24,8 @@ import {
   formatFanucCoordinate,
   formatHeidenhainCoordinate,
 } from "./utils/numbers";
-import { MachineStateMachine } from "./state/machine";
+import type { MachineStateMachine } from "./state/machine";
+import type { MachineContext } from "./state/types";
 import { AuditTrail } from "./audit/trail";
 import { getControllerFamily } from "./ir/family";
 
@@ -79,7 +76,7 @@ function formatAxis(
   const family = getControllerFamily(format);
   switch (family) {
     case "siemens":
-      return formatSiemensCoordinate(axis, value);
+      return formatSiemensCoordinate(axis.toUpperCase(), value);
     case "heidenhain":
       return formatHeidenhainCoordinate(axis.toUpperCase(), value);
     default:
@@ -91,15 +88,15 @@ function formatAxis(
  * Build the axis-position string from a target.
  */
 function formatTarget(
-  target: NonNullable<NeutralIRBlock["target"]>,
+  target: Partial<AxisTarget>,
   format: ControllerFormat,
   includeIJK = true,
 ): string {
   const parts: string[] = [];
-  const axisOrder = ["x", "y", "z", "a", "b", "c", "u", "v", "w"];
+  const axisOrder: (keyof AxisTarget)[] = ["x", "y", "z", "a", "b", "c", "u", "v", "w"];
 
   for (const axis of axisOrder) {
-    const val = (target as any)[axis];
+    const val = target[axis];
     if (val !== undefined) {
       parts.push(formatAxis(axis, val, format));
     }
@@ -123,6 +120,19 @@ function formatTarget(
   }
 
   return parts.join(" ");
+}
+
+function formatCyclePositionTarget(
+  target: NonNullable<NeutralIRBlock["target"]>,
+  format: ControllerFormat,
+): string {
+  const position: Partial<AxisTarget> = {};
+  const positionAxes: (keyof AxisTarget)[] = ["x", "y", "a", "b", "c", "u", "v", "w"];
+  for (const axis of positionAxes) {
+    const value = target[axis];
+    if (value !== undefined) position[axis] = value;
+  }
+  return formatTarget(position, format, false);
 }
 
 /**
@@ -149,7 +159,66 @@ function maybeAddComment(
 ): string {
   if (!comment) return line;
   const c = formatComment(comment, format);
+  if (!line || line === c) return line || c;
   return line ? `${line} ${c}` : c;
+}
+
+function needsManualCycleReview(block: NeutralIRBlock): boolean {
+  return (
+    block.type === "cycle-other" ||
+    block.audit.some((entry) => entry.confidence === "manual-review-needed")
+  );
+}
+
+function hasUnknownFanucCycleReturnPlane(block: NeutralIRBlock): boolean {
+  const cycle = block.cycle;
+  const sourceCycleId = cycle?.sourceCycleId ?? cycle?.originalCycleId;
+  return (
+    !!sourceCycleId &&
+    /^G0?8[1-9]$/i.test(sourceCycleId.trim()) &&
+    cycle?.returnPlane === undefined
+  );
+}
+
+function emitManualReviewCycleComment(
+  block: NeutralIRBlock,
+  format: ControllerFormat,
+): string {
+  const id = block.cycle?.originalCycleId ? ` ${block.cycle.originalCycleId}` : "";
+  const raw = block.raw.trim().replace(/\s+/g, " ");
+  const detail = raw ? `: ${raw}` : "";
+  return formatComment(`MANUAL REVIEW: cycle not emitted${id}${detail}`, format);
+}
+
+type CycleIR = NonNullable<NeutralIRBlock["cycle"]>;
+
+function cycleReferencePlane(cycle: CycleIR): number {
+  return cycle.surfaceCoordinate ?? cycle.referencePlane ?? 0;
+}
+
+function cycleFinalDepth(cycle: CycleIR): number {
+  if (cycle.absoluteDepth !== undefined) return cycle.absoluteDepth;
+  if (cycle.relativeDepth !== undefined) return cycleReferencePlane(cycle) + cycle.relativeDepth;
+  return cycleReferencePlane(cycle) - Math.abs(cycle.depth);
+}
+
+function shouldPreserveSiemensDepthFields(block: NeutralIRBlock): boolean {
+  return /\bCYCLE\d+\s*\(/i.test(block.raw);
+}
+
+function siemensDepthFields(block: NeutralIRBlock, cycle: CycleIR): { dp: number; dpr: number } {
+  if (cycle.absoluteDepth !== undefined) {
+    return {
+      dp: cycle.absoluteDepth,
+      dpr: shouldPreserveSiemensDepthFields(block) ? cycle.relativeDepth ?? 0 : 0,
+    };
+  }
+
+  if (cycle.relativeDepth !== undefined) {
+    return { dp: 0, dpr: cycle.relativeDepth };
+  }
+
+  return { dp: cycleFinalDepth(cycle), dpr: 0 };
 }
 
 // ==========================================
@@ -172,7 +241,7 @@ class EmissionTracker {
   private state: Record<string, string | null> = {};
   private currentTool: number | null = null;
 
-  constructor(ctx?: import("./state/types").MachineContext) {
+  constructor(ctx?: MachineContext) {
     if (ctx) {
       this.state = {
         motion: ctx.modalG.motion,
@@ -206,15 +275,15 @@ class EmissionTracker {
    * Update the emission tracker based on a context delta.
    * Marks any changed modal values as needing re-emission.
    */
-  processDelta(delta?: Record<string, any>): void {
+  processDelta(delta?: Partial<MachineContext>): void {
     if (!delta) return;
-    const modalDelta = (delta as any).modalG;
+    const modalDelta = delta.modalG;
     if (!modalDelta) return;
 
     // Invalidate our state for keys that changed in the delta
     // so that hasChanged will return true for them
     for (const key of Object.keys(modalDelta)) {
-      (this.state as any)[key] = null; // Force re-emission
+      this.state[key] = null; // Force re-emission
     }
   }
 
@@ -235,8 +304,8 @@ function generateSiemens(
   machine?: MachineStateMachine,
 ): string {
   const lines: string[] = [];
-  const state = new EmissionTracker(machine?.context);
-  const ctx = machine?.context;
+  const state = new EmissionTracker();
+  void machine;
   const progName = options?.programNumber ? `O${String(options.programNumber).padStart(4, "0")}` : "PROGRAM";
 
   for (let i = 0; i < blocks.length; i++) {
@@ -292,9 +361,26 @@ function generateSiemens(
         }
         break;
 
+      case "tool-length-comp":
+        line = block.toolLengthOffset !== undefined
+          ? `D${block.toolLengthOffset}`
+          : formatComment(`MANUAL REVIEW: tool length offset missing: ${block.raw.trim()}`, format);
+        if (block.target) {
+          const targetStr = formatTarget(block.target, format, false);
+          if (targetStr) line += ` ${targetStr}`;
+        }
+        if (block.feedRate !== undefined) {
+          line += ` F=${formatCoordinate(block.feedRate)}`;
+        }
+        break;
+
+      case "tool-length-comp-off":
+        line = "D0";
+        break;
+
       case "spindle-forward":
         line = `M3`;
-        if (block.spindleSpeed && ctx?.spindleSpeed !== block.spindleSpeed) {
+        if (block.spindleSpeed) {
           line = `S=${formatRPM(block.spindleSpeed)} M3`;
         }
         break;
@@ -321,55 +407,55 @@ function generateSiemens(
 
       case "units-metric":
         if (state.hasChanged("units", "G71")) line = "G71";
-        continue;
+        break;
 
       case "units-imperial":
         if (state.hasChanged("units", "G70")) line = "G70";
-        continue;
+        break;
 
       case "absolute-mode":
         if (state.hasChanged("distance", "G90")) line = "G90";
-        continue;
+        break;
 
       case "incremental-mode":
         if (state.hasChanged("distance", "G91")) line = "G91";
-        continue;
+        break;
 
       case "plane-xy":
-        if (ctx?.modalG.plane !== "G17") line = "G17";
-        continue;
+        if (state.hasChanged("plane", "G17")) line = "G17";
+        break;
 
       case "plane-xz":
-        if (ctx?.modalG.plane !== "G18") line = "G18";
-        continue;
+        if (state.hasChanged("plane", "G18")) line = "G18";
+        break;
 
       case "plane-yz":
-        if (ctx?.modalG.plane !== "G19") line = "G19";
-        continue;
+        if (state.hasChanged("plane", "G19")) line = "G19";
+        break;
 
       case "cutter-comp-off":
         if (state.hasChanged("cutter", "G40")) line = "G40";
-        continue;
+        break;
 
       case "cutter-comp-left":
         if (state.hasChanged("cutter", "G41")) line = "G41";
-        continue;
+        break;
 
       case "cutter-comp-right":
         if (state.hasChanged("cutter", "G42")) line = "G42";
-        continue;
+        break;
 
       case "work-offset": {
         const offset = block.workOffset !== undefined ? `G${54 + block.workOffset}` : "G54";
         if (state.hasChanged("workOffset", offset)) line = offset;
-        continue;
+        break;
       }
 
       case "feed-mode":
         if (block.feedModeValue && state.hasChanged("feedMode", block.feedModeValue)) {
           line = block.feedModeValue;
         }
-        continue;
+        break;
 
       case "dwell":
         if (block.dwell !== undefined) {
@@ -450,37 +536,71 @@ function emitCycleSiemens(
   format: ControllerFormat,
 ): string {
   if (!block.cycle) return formatComment(`Unknown cycle: ${block.raw}`, format);
+  if (needsManualCycleReview(block) || hasUnknownFanucCycleReturnPlane(block)) {
+    return emitManualReviewCycleComment(block, format);
+  }
 
   const c = block.cycle;
   const targetId = c.originalCycleId?.toUpperCase() || "CYCLE81";
-  const rfp = c.retractPlane;
-  const rtp = rfp + 2; // Retract plane above reference
-  const sdis = 1; // Safety distance
-  const dp = c.depth;
+  const rtp = c.returnPlane ?? c.retractPlane;
+  const rfp = cycleReferencePlane(c);
+  const sdis = c.safetyClearance ?? Math.max(rtp - rfp, 0);
+  const { dp, dpr } = siemensDepthFields(block, c);
+
+  const common = [
+    formatCoordinate(rtp),
+    formatCoordinate(rfp),
+    formatCoordinate(sdis),
+    formatCoordinate(dp),
+    formatCoordinate(dpr),
+  ];
 
   let params: string;
   switch (targetId) {
     case "CYCLE82":
-      params = `${rtp},${rfp},${sdis},${dp},${c.dwell || 0}`;
+      params = [...common, formatCoordinate(c.dwell || 0)].join(",");
       break;
     case "CYCLE83":
-      params = `${rtp},${rfp},${sdis},${dp},0,${c.peckDepth || dp / 2},${c.chipBreak || c.peckDepth || Math.min(dp / 2, 3)},,0,,`;
+      params = [
+        ...common,
+        formatCoordinate(c.peckDepth || Math.max(c.depth / 2, 1)),
+        formatCoordinate(c.peckDepth || Math.max(c.depth / 2, 1)),
+        formatCoordinate(c.chipBreak || 0),
+        formatCoordinate(c.dwell || 0),
+        "0",
+        "1",
+        "0",
+      ].join(",");
       break;
     case "CYCLE84":
-      params = `${rtp},${rfp},${sdis},${dp},0,,3,${c.pitch || 1.5},,,`;
+      params = [
+        ...common,
+        formatCoordinate(c.dwell || 0),
+        "3",
+        "0",
+        formatCoordinate(c.pitch || 1.5),
+        "0",
+        block.spindleSpeed ? formatRPM(block.spindleSpeed) : "",
+        "",
+      ].join(",");
       break;
     case "CYCLE85":
-      params = `${rtp},${rfp},${sdis},${dp}`;
+      params = [
+        ...common,
+        formatCoordinate(c.dwell || 0),
+        formatCoordinate(c.feedRate ?? block.feedRate ?? 0),
+        formatCoordinate(c.retractionFeedRate ?? c.feedRate ?? block.feedRate ?? 0),
+      ].join(",");
       break;
     default: // CYCLE81
-      params = `${rtp},${rfp},${sdis},${dp}`;
+      params = common.join(",");
       break;
   }
 
   const feed = block.feedRate ? ` F=${formatCoordinate(block.feedRate)}` : "";
 
   // Build axis words (X/Y for positioning)
-  const axisWords = block.target ? formatTarget(block.target, format, false) : "";
+  const axisWords = block.target ? formatCyclePositionTarget(block.target, format) : "";
 
   return `${axisWords} ${targetId}(${params})${feed}`.trim();
 }
@@ -497,8 +617,8 @@ function generateFanuc(
   machine?: MachineStateMachine,
 ): string {
   const lines: string[] = [];
-  const state = new EmissionTracker(machine?.context);
-  const ctx = machine?.context;
+  const state = new EmissionTracker();
+  void machine;
   const progNum = options?.programNumber || 1;
   const useDecimal = format === "haas";
 
@@ -550,6 +670,10 @@ function generateFanuc(
         line = emitCycleFanuc(block, "G85", format, useDecimal);
         break;
 
+      case "cycle-other":
+        line = emitManualReviewCycleComment(block, format);
+        break;
+
       case "tool-change":
         state.setTool(block.toolNumber ?? null);
         line = `T${String(block.toolNumber || 1).padStart(2, "0")} M6`;
@@ -558,8 +682,26 @@ function generateFanuc(
         }
         break;
 
+      case "tool-length-comp":
+        line = block.toolLengthOffset !== undefined
+          ? `G43 H${String(block.toolLengthOffset).padStart(2, "0")}`
+          : "G43";
+        if (block.target) {
+          const targetStr = formatTarget(block.target, format, false);
+          if (targetStr) line += ` ${targetStr}`;
+        }
+        if (block.feedRate !== undefined) {
+          const feed = useDecimal ? block.feedRate.toFixed(2) : formatCoordinate(block.feedRate);
+          line += ` F${feed}`;
+        }
+        break;
+
+      case "tool-length-comp-off":
+        line = "G49";
+        break;
+
       case "spindle-forward":
-        if (block.spindleSpeed && ctx?.spindleSpeed !== block.spindleSpeed) {
+        if (block.spindleSpeed) {
           line = `S${formatRPM(block.spindleSpeed)} M3`;
         } else {
           line = "M3";
@@ -588,55 +730,63 @@ function generateFanuc(
 
       case "units-metric":
         if (state.hasChanged("units", "G21")) line = "G21";
-        continue;
+        break;
 
       case "units-imperial":
         if (state.hasChanged("units", "G20")) line = "G20";
-        continue;
+        break;
 
       case "absolute-mode":
         if (state.hasChanged("distance", "G90")) line = "G90";
-        continue;
+        break;
 
       case "incremental-mode":
         if (state.hasChanged("distance", "G91")) line = "G91";
-        continue;
+        break;
+
+      case "cycle-return-initial":
+        if (state.hasChanged("cycleReturn", "G98")) line = "G98";
+        break;
+
+      case "cycle-return-r-plane":
+        if (state.hasChanged("cycleReturn", "G99")) line = "G99";
+        break;
 
       case "plane-xy":
         if (state.hasChanged("plane", "G17")) line = "G17";
-        continue;
+        break;
 
       case "plane-xz":
         if (state.hasChanged("plane", "G18")) line = "G18";
-        continue;
+        break;
 
       case "plane-yz":
         if (state.hasChanged("plane", "G19")) line = "G19";
-        continue;
+        break;
 
       case "cutter-comp-off":
         if (state.hasChanged("cutter", "G40")) line = "G40";
-        continue;
+        break;
 
       case "cutter-comp-left":
         if (state.hasChanged("cutter", "G41")) line = "G41";
-        continue;
+        break;
 
       case "cutter-comp-right":
         if (state.hasChanged("cutter", "G42")) line = "G42";
-        continue;
+        break;
 
       case "work-offset": {
         const offset = block.workOffset !== undefined ? `G${54 + block.workOffset}` : "G54";
         if (state.hasChanged("workOffset", offset)) line = offset;
-        continue;
+        break;
       }
 
       case "feed-mode":
         if (block.feedModeValue && state.hasChanged("feedMode", block.feedModeValue)) {
           line = block.feedModeValue;
         }
-        continue;
+        break;
 
       case "dwell":
         if (block.dwell !== undefined) {
@@ -729,28 +879,45 @@ function emitCycleFanuc(
   if (!block.cycle) {
     return formatComment(`Unknown cycle: ${block.raw}`, format);
   }
+  if (needsManualCycleReview(block)) {
+    return emitManualReviewCycleComment(block, format);
+  }
 
   const c = block.cycle;
-  const targetId = c.originalCycleId || defaultG;
+  const targetId = normalizeFanucCycleId(c.originalCycleId) || defaultG;
 
   // Axis positions
-  const axisStr = block.target ? formatTarget(block.target, format, false) : "";
-  const zVal = -c.depth;
+  const axisStr = block.target ? formatCyclePositionTarget(block.target, format) : "";
+  const zVal = cycleFinalDepth(c);
   const zStr = formatFanucCoordinate("Z", zVal, { decimals: 3, keepTrailingDecimal: useDecimal });
   const rStr = formatFanucCoordinate("R", c.retractPlane, { decimals: 3, keepTrailingDecimal: useDecimal });
   const feed = block.feedRate
-    ? ` F${useDecimal ? block.feedRate.toFixed(2) : formatCoordinate(block.feedRate)}`
+    ? `F${useDecimal ? block.feedRate.toFixed(2) : formatCoordinate(block.feedRate)}`
     : "";
 
   let extra = "";
   if (c.peckDepth && (targetId === "G83" || targetId === "G73")) {
-    extra = ` Q${formatCoordinate(c.peckDepth, { decimals: 2 })}`;
+    extra = `Q${formatCoordinate(c.peckDepth, { decimals: 2 })}`;
   }
   if (c.dwell && (targetId === "G82" || targetId === "G89")) {
-    extra = ` P${Math.round(c.dwell * 1000)}`;
+    extra = `P${Math.round(c.dwell * 1000)}`;
   }
 
-  return `${targetId} ${axisStr} ${zStr} ${rStr}${extra}${feed}`.trim();
+  return [targetId, axisStr, zStr, rStr, extra, feed].filter(Boolean).join(" ");
+}
+
+function normalizeFanucCycleId(originalCycleId: string | undefined): string | undefined {
+  if (!originalCycleId) return undefined;
+  const upper = originalCycleId.toUpperCase();
+  if (/^G\d+/.test(upper)) return upper;
+
+  const siemensMatch = upper.match(/^CYCLE(\d+)/);
+  if (siemensMatch) {
+    const num = Number(siemensMatch[1]);
+    if (num >= 81 && num <= 89) return `G${num}`;
+  }
+
+  return undefined;
 }
 
 // ==========================================
@@ -767,6 +934,7 @@ function generateHeidenhain(
   const lines: string[] = [];
   const state = new EmissionTracker(machine?.context);
   const progName = options?.programNumber ? `PGM_${String(options.programNumber).padStart(4, "0")}` : "PROGRAM";
+  let suppressNextCycleCall = false;
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
@@ -800,23 +968,38 @@ function generateHeidenhain(
         break;
 
       case "cycle-drill":
-        line = emitCycleHeidenhain(block, "200", "DRILLING");
+        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-peck-drill":
-        line = emitCycleHeidenhain(block, "202", "PECKING");
+        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-tap":
-        line = emitCycleHeidenhain(block, "203", "TAPPING");
+        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-bore":
-        line = emitCycleHeidenhain(block, "204", "BORING");
+        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
+        break;
+
+      case "cycle-other":
+        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-call":
+        if (suppressNextCycleCall) {
+          lines.push(formatComment(`MANUAL REVIEW: suppressed CYCL CALL after unsupported cycle: ${block.raw.trim()}`, format));
+          suppressNextCycleCall = false;
+          continue;
+        }
         lines.push("CYCL CALL");
+        suppressNextCycleCall = false;
         continue;
 
       case "tool-change":
@@ -914,7 +1097,8 @@ function emitMotionHeidenhain(
   let line = "L";
   if (block.target) {
     for (const axis of ["X", "Y", "Z", "A", "B", "C"] as const) {
-      const val = (block.target as any)[axis.toLowerCase()];
+      const key = axis.toLowerCase() as keyof AxisTarget;
+      const val = block.target[key];
       if (val !== undefined) {
         const sign = val >= 0 ? "+" : "";
         line += ` ${axis}${sign}${formatCoordinate(val, { decimals: 3 })}`;
@@ -941,7 +1125,8 @@ function emitArcHeidenhain(
   let line = "CR";
   if (block.target) {
     for (const axis of ["X", "Y", "Z"] as const) {
-      const val = (block.target as any)[axis.toLowerCase()];
+      const key = axis.toLowerCase() as keyof AxisTarget;
+      const val = block.target[key];
       if (val !== undefined) {
         const sign = val >= 0 ? "+" : "";
         line += ` ${axis}${sign}${formatCoordinate(val, { decimals: 3 })}`;
@@ -957,35 +1142,120 @@ function emitArcHeidenhain(
   return line;
 }
 
-function emitCycleHeidenhain(
-  block: NeutralIRBlock,
-  cycleNum: string,
-  operation: string,
-): string {
+function shouldInlineHeidenhainCycleCall(blocks: NeutralIRBlock[], index: number): boolean {
+  const block = blocks[index];
+  if (blocks[index + 1]?.type === "cycle-call") return false;
+  if (/^\s*CYCL\s+DEF\b/i.test(block.raw)) return false;
+  return true;
+}
+
+function shouldSuppressFollowingHeidenhainCycleCall(block: NeutralIRBlock): boolean {
+  return needsManualCycleReview(block) || hasUnknownFanucCycleReturnPlane(block);
+}
+
+function emitCycleHeidenhain(block: NeutralIRBlock, includeCall: boolean): string {
+  if (needsManualCycleReview(block) || hasUnknownFanucCycleReturnPlane(block)) {
+    return emitManualReviewCycleComment(block, "heidenhain-tnc640");
+  }
+
   const lines: string[] = [];
+  const { cycleNum, operation } = getHeidenhainCycleHeader(block);
   lines.push(`CYCL DEF ${cycleNum} ${operation}`);
   if (block.cycle) {
-    lines.push(`QL200=${formatCoordinate(block.cycle.retractPlane)}; SET-UP`);
-    lines.push(`QL201=-${formatCoordinate(block.cycle.depth)}; DEPTH`);
-    lines.push(`QL202=2; FEED`);
-    if (block.cycle.dwell) {
-      lines.push(`QL213=${formatCoordinate(block.cycle.dwell)}; DWELL`);
+    const c = block.cycle;
+    const setup = c.safetyClearance ?? Math.max(c.retractPlane - (c.surfaceCoordinate ?? c.referencePlane ?? 0), 0);
+    const surface = c.surfaceCoordinate ?? c.referencePlane ?? 0;
+    const secondSetup = c.returnPlane !== undefined
+      ? Math.max(c.returnPlane - surface, setup)
+      : c.secondSetupClearance ?? Math.max(c.retractPlane - surface, setup);
+    const feed = c.feedRate ?? block.feedRate ?? 0;
+
+    lines.push(`Q200=${formatCoordinate(setup)} ;SET-UP CLEARANCE`);
+    const depthFromSurface = c.relativeDepth ?? cycleFinalDepth(c) - surface;
+    lines.push(`Q201=${formatHeidenhainSigned(depthFromSurface)} ;DEPTH`);
+    if (cycleNum === "207" && c.pitch) {
+      lines.push(`Q239=${formatCoordinate(c.pitch)} ;THREAD PITCH`);
+    } else {
+      lines.push(`Q206=${formatCoordinate(feed)} ;FEED RATE FOR PLNGNG`);
     }
-    if (block.cycle.peckDepth) {
-      lines.push(`QL210=${formatCoordinate(block.cycle.peckDepth)}; PECK`);
+    if (cycleNum === "200" || cycleNum === "203" || cycleNum === "205") {
+      const plungingDepth = c.peckDepth ?? Math.abs(depthFromSurface);
+      if (plungingDepth > 0) {
+        lines.push(`Q202=${formatCoordinate(plungingDepth)} ;PLUNGING DEPTH`);
+      }
+    }
+    lines.push(`Q203=${formatHeidenhainSigned(surface)} ;SURFACE COORDINATE`);
+    lines.push(`Q204=${formatCoordinate(secondSetup)} ;2ND SET-UP CLEARANCE`);
+    if (block.cycle.dwell) {
+      lines.push(`Q211=${formatCoordinate(block.cycle.dwell)} ;DWELL TIME AT DEPTH`);
     }
   }
-  lines.push("CYCL CALL");
 
   // Axis position
   if (block.target) {
-    const pos = formatTarget(block.target, "heidenhain-tnc640", false);
+    const pos = formatCyclePositionTarget(block.target, "heidenhain-tnc640");
     if (pos) {
       lines.push(`L ${pos} R0 FMAX M3`);
     }
   }
 
+  if (includeCall) {
+    lines.push("CYCL CALL");
+  }
+
   return lines.join("\n");
+}
+
+function getHeidenhainCycleHeader(block: NeutralIRBlock): { cycleNum: string; operation: string } {
+  const original = block.cycle?.originalCycleId ?? "";
+  const match = original.match(/CYCL\s+DEF\s+(\d+)/i);
+  if (match) {
+    return {
+      cycleNum: match[1],
+      operation: heidenhainOperationForCycle(match[1], block),
+    };
+  }
+
+  switch (block.type) {
+    case "cycle-peck-drill":
+      return { cycleNum: "203", operation: "UNIVERSAL DRILLING" };
+    case "cycle-tap":
+      return { cycleNum: "206", operation: "TAPPING" };
+    case "cycle-bore":
+      return { cycleNum: "202", operation: "BORING" };
+    case "cycle-other":
+      return { cycleNum: "204", operation: "BACK BORING" };
+    default:
+      return { cycleNum: "200", operation: "DRILLING" };
+  }
+}
+
+function heidenhainOperationForCycle(cycleNum: string, block: NeutralIRBlock): string {
+  switch (cycleNum) {
+    case "200":
+      return "DRILLING";
+    case "201":
+      return "REAMING";
+    case "202":
+      return "BORING";
+    case "203":
+      return "UNIVERSAL DRILLING";
+    case "204":
+      return "BACK BORING";
+    case "205":
+      return "UNIVERSAL PECKING";
+    case "206":
+      return "TAPPING";
+    case "207":
+      return "RIGID TAPPING";
+    default:
+      return block.cycle?.type?.toUpperCase() ?? "DRILLING";
+  }
+}
+
+function formatHeidenhainSigned(value: number): string {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${formatCoordinate(value)}`;
 }
 
 // ==========================================

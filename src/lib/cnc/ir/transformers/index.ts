@@ -1,16 +1,11 @@
 /**
- * IR Transformers — Per-Format Transformation Pipeline.
+ * IR Transformers - Per-Format Transformation Pipeline.
  *
- * Each transformer takes an array of NeutralIRBlock and applies
- * target-format-specific transformations. This architecture separates
- * the "what to transform" (generators) from "how to transform" (transformers).
- *
- * Usage:
- *   import { applyTransformations } from "./ir/transformers";
- *   const transformed = applyTransformations(irBlocks, sourceFormat, targetFormat);
+ * Transformers operate on already-normalized semantic IR. They should change
+ * target-specific identity and audit confidence, not re-parse raw source text.
  */
 
-import type { NeutralIRBlock } from "../types";
+import type { NeutralIRBlock, AuditEntry } from "../types";
 import type { ControllerFormat } from "../../types";
 import { getControllerFamily } from "../family";
 
@@ -26,9 +21,14 @@ export type Transformer = (
   ctx: TransformerContext,
 ) => NeutralIRBlock[];
 
-// ==========================================
-// TRANSFORMER REGISTRY
-// ==========================================
+type Confidence = AuditEntry["confidence"];
+
+interface CycleMapping {
+  source: string;
+  target: string;
+  confidence: Confidence;
+  description: string;
+}
 
 const transformers: Transformer[] = [
   transformFanucToSiemensCycles,
@@ -39,9 +39,6 @@ const transformers: Transformer[] = [
   transformSiemensToolNameToComment,
 ];
 
-/**
- * Apply all applicable transformations for the given source/target formats.
- */
 export function applyTransformations(
   blocks: NeutralIRBlock[],
   sourceFormat: ControllerFormat,
@@ -56,301 +53,173 @@ export function applyTransformations(
     targetFamily: getControllerFamily(targetFormat),
   };
 
-  let result = blocks;
-  for (const transformer of transformers) {
-    result = transformer(result, ctx);
-  }
-
-  return result;
+  return transformers.reduce((result, transformer) => transformer(result, ctx), blocks);
 }
 
-// ==========================================
-// INDIVIDUAL TRANSFORMERS
-// ==========================================
+const FANUC_TO_SIEMENS: CycleMapping[] = [
+  { source: "G81", target: "CYCLE81", confidence: "exact", description: "Simple drilling" },
+  { source: "G82", target: "CYCLE82", confidence: "exact", description: "Drilling with dwell" },
+  { source: "G83", target: "CYCLE83", confidence: "approximate", description: "Peck drilling parameters are simplified" },
+  { source: "G84", target: "CYCLE84", confidence: "approximate", description: "Tapping parameters are simplified" },
+  { source: "G85", target: "CYCLE85", confidence: "approximate", description: "Boring feed-out parameters are simplified" },
+  { source: "G86", target: "CYCLE86", confidence: "approximate", description: "Boring stop/retract behavior requires review" },
+  { source: "G87", target: "CYCLE87", confidence: "manual-review-needed", description: "Back boring behavior requires review" },
+  { source: "G88", target: "CYCLE88", confidence: "manual-review-needed", description: "Manual-retract boring behavior requires review" },
+  { source: "G89", target: "CYCLE89", confidence: "approximate", description: "Boring dwell/feed-out parameters are simplified" },
+];
 
-/**
- * Fanuc G81-G89 → Siemens CYCLE81-CYCLE89.
- */
+const SIEMENS_TO_FANUC: CycleMapping[] = [
+  { source: "CYCLE81", target: "G81", confidence: "exact", description: "Simple drilling" },
+  { source: "CYCLE82", target: "G82", confidence: "exact", description: "Drilling with dwell" },
+  { source: "CYCLE83", target: "G83", confidence: "approximate", description: "Deep-hole cycle has parameters not modeled in Fanuc G83" },
+  { source: "CYCLE84", target: "G84", confidence: "approximate", description: "Tapping cycle has Siemens parameters not modeled in Fanuc G84" },
+  { source: "CYCLE85", target: "G85", confidence: "approximate", description: "Boring feed/retraction fields are simplified" },
+  { source: "CYCLE86", target: "G86", confidence: "approximate", description: "Boring stop/retract behavior requires review" },
+  { source: "CYCLE87", target: "G87", confidence: "manual-review-needed", description: "Back boring behavior requires review" },
+  { source: "CYCLE88", target: "G88", confidence: "manual-review-needed", description: "Manual-retract boring behavior requires review" },
+  { source: "CYCLE89", target: "G89", confidence: "approximate", description: "Boring dwell/feed-out parameters are simplified" },
+];
+
+const HEIDENHAIN_TO_FANUC: CycleMapping[] = [
+  { source: "CYCL DEF 200", target: "G81", confidence: "exact", description: "Simple drilling" },
+  { source: "CYCL DEF 201", target: "G85", confidence: "approximate", description: "Reaming mapped to boring/reaming cycle" },
+  { source: "CYCL DEF 202", target: "G85", confidence: "approximate", description: "Boring mapped to basic boring cycle" },
+  { source: "CYCL DEF 203", target: "G83", confidence: "approximate", description: "Universal drilling mapped to peck drilling" },
+  { source: "CYCL DEF 204", target: "G87", confidence: "manual-review-needed", description: "Back boring requires manual review" },
+  { source: "CYCL DEF 205", target: "G83", confidence: "approximate", description: "Universal pecking mapped to peck drilling" },
+  { source: "CYCL DEF 206", target: "G84", confidence: "approximate", description: "Tapping mapped to Fanuc tapping" },
+  { source: "CYCL DEF 207", target: "G84", confidence: "approximate", description: "Rigid tapping mapped to Fanuc tapping" },
+];
+
+const HEIDENHAIN_TO_SIEMENS: CycleMapping[] = [
+  { source: "CYCL DEF 200", target: "CYCLE81", confidence: "exact", description: "Simple drilling" },
+  { source: "CYCL DEF 201", target: "CYCLE85", confidence: "approximate", description: "Reaming mapped to boring/reaming cycle" },
+  { source: "CYCL DEF 202", target: "CYCLE85", confidence: "approximate", description: "Boring mapped to boring cycle" },
+  { source: "CYCL DEF 203", target: "CYCLE83", confidence: "approximate", description: "Universal drilling mapped to deep-hole cycle" },
+  { source: "CYCL DEF 204", target: "CYCLE87", confidence: "manual-review-needed", description: "Back boring requires manual review" },
+  { source: "CYCL DEF 205", target: "CYCLE83", confidence: "approximate", description: "Universal pecking mapped to deep-hole cycle" },
+  { source: "CYCL DEF 206", target: "CYCLE84", confidence: "approximate", description: "Tapping mapped to Siemens tapping" },
+  { source: "CYCL DEF 207", target: "CYCLE84", confidence: "approximate", description: "Rigid tapping mapped to Siemens tapping" },
+];
+
+const FANUC_TO_HEIDENHAIN: CycleMapping[] = [
+  { source: "G81", target: "CYCL DEF 200", confidence: "exact", description: "Simple drilling" },
+  { source: "G82", target: "CYCL DEF 200", confidence: "exact", description: "Drilling with dwell via Q211" },
+  { source: "G83", target: "CYCL DEF 203", confidence: "approximate", description: "Peck drilling mapped to universal drilling" },
+  { source: "G84", target: "CYCL DEF 206", confidence: "approximate", description: "Tapping mapped to Heidenhain tapping" },
+  { source: "G85", target: "CYCL DEF 202", confidence: "approximate", description: "Boring mapped to Heidenhain boring" },
+  { source: "G86", target: "CYCL DEF 202", confidence: "approximate", description: "Bore-and-stop behavior simplified" },
+  { source: "G87", target: "CYCL DEF 204", confidence: "manual-review-needed", description: "Back boring requires manual review" },
+  { source: "G88", target: "CYCL DEF 204", confidence: "manual-review-needed", description: "Manual-retract boring requires manual review" },
+  { source: "G89", target: "CYCL DEF 202", confidence: "approximate", description: "Boring dwell/feed-out behavior simplified" },
+];
+
 function transformFanucToSiemensCycles(
   blocks: NeutralIRBlock[],
   ctx: TransformerContext,
 ): NeutralIRBlock[] {
   if (ctx.sourceFamily !== "fanuc" || ctx.targetFamily !== "siemens") return blocks;
-
-  const cycleMap: Record<string, string> = {
-    G81: "CYCLE81",
-    G82: "CYCLE82",
-    G83: "CYCLE83",
-    G84: "CYCLE84",
-    G85: "CYCLE85",
-    G86: "CYCLE86",
-    G87: "CYCLE87",
-    G88: "CYCLE88",
-    G89: "CYCLE89",
-  };
-
-  return blocks.map((block) => {
-    if (!block.cycle) return block;
-    const origId = block.cycle.originalCycleId?.toUpperCase() ?? "";
-    const targetId = cycleMap[origId];
-    if (!targetId) return block;
-
-    return {
-      ...block,
-      cycle: {
-        ...block.cycle,
-        originalCycleId: targetId,
-      },
-      transformations: [
-        ...block.transformations,
-        {
-          ruleId: `CYCLE_${origId}_TO_${targetId}`,
-          description: `Fanuc ${origId} → Siemens ${targetId}`,
-          source: origId,
-          target: targetId,
-        },
-      ],
-      audit: [
-        ...block.audit,
-        {
-          ruleId: `CYCLE_${origId}_TO_${targetId}`,
-          description: `Cycle mapping: ${origId} → ${targetId}`,
-          source: origId,
-          target: targetId,
-          confidence: "exact",
-        },
-      ],
-    };
-  });
+  return mapCycles(blocks, FANUC_TO_SIEMENS, "Fanuc", "Siemens");
 }
 
-/**
- * Siemens CYCLE81-CYCLE89 → Fanuc G81-G89.
- */
 function transformSiemensToFanucCycles(
   blocks: NeutralIRBlock[],
   ctx: TransformerContext,
 ): NeutralIRBlock[] {
   if (ctx.sourceFamily !== "siemens" || ctx.targetFamily !== "fanuc") return blocks;
-
-  const cycleMap: Record<string, string> = {
-    CYCLE81: "G81",
-    CYCLE82: "G82",
-    CYCLE83: "G83",
-    CYCLE84: "G84",
-    CYCLE85: "G85",
-    CYCLE86: "G86",
-    CYCLE87: "G87",
-    CYCLE88: "G88",
-    CYCLE89: "G89",
-  };
-
-  return blocks.map((block) => {
-    if (!block.cycle) return block;
-    const origId = block.cycle.originalCycleId?.toUpperCase() ?? "";
-    const targetId = cycleMap[origId];
-    if (!targetId) return block;
-
-    return {
-      ...block,
-      cycle: {
-        ...block.cycle,
-        originalCycleId: targetId,
-        // Rename original ID for audit
-      },
-      transformations: [
-        ...block.transformations,
-        {
-          ruleId: `CYCLE_${origId}_TO_${targetId}`,
-          description: `Siemens ${origId} → Fanuc ${targetId}`,
-          source: origId,
-          target: targetId,
-        },
-      ],
-      audit: [
-        ...block.audit,
-        {
-          ruleId: `CYCLE_${origId}_TO_${targetId}`,
-          description: `Cycle mapping: ${origId} → ${targetId}`,
-          source: origId,
-          target: targetId,
-          confidence: "exact",
-        },
-      ],
-    };
-  });
+  return mapCycles(blocks, SIEMENS_TO_FANUC, "Siemens", "Fanuc");
 }
 
-/**
- * Heidenhain CYCL DEF → Fanuc G81-G89.
- */
 function transformHeidenhainToFanucCycles(
   blocks: NeutralIRBlock[],
   ctx: TransformerContext,
 ): NeutralIRBlock[] {
   if (ctx.sourceFamily !== "heidenhain" || ctx.targetFamily !== "fanuc") return blocks;
-
-  const cycleMap: Record<string, string> = {
-    "200": "G81",
-    "201": "G82",
-    "202": "G83",
-    "203": "G84",
-    "204": "G85",
-    "205": "G86",
-    "206": "G87",
-    "207": "G88",
-    "208": "G89",
-  };
-
-  return blocks.map((block) => {
-    if (!block.cycle) return block;
-    const origId = block.cycle.originalCycleId ?? "";
-    const numMatch = origId.match(/\d+/);
-    const num = numMatch ? numMatch[0] : "";
-    const targetId = cycleMap[num];
-    if (!targetId) return block;
-
-    return {
-      ...block,
-      cycle: {
-        ...block.cycle,
-        originalCycleId: targetId,
-      },
-      transformations: [
-        ...block.transformations,
-        {
-          ruleId: `HH_CYCL_DEF_${num}_TO_${targetId}`,
-          description: `Heidenhain CYCL DEF ${num} → Fanuc ${targetId}`,
-          source: origId,
-          target: targetId,
-        },
-      ],
-      audit: [
-        ...block.audit,
-        {
-          ruleId: `HH_CYCL_DEF_${num}_TO_${targetId}`,
-          description: `Cycle mapping: CYCL DEF ${num} → ${targetId}`,
-          source: origId,
-          target: targetId,
-          confidence: "exact",
-        },
-      ],
-    };
-  });
+  return mapCycles(blocks, HEIDENHAIN_TO_FANUC, "Heidenhain", "Fanuc");
 }
 
-/**
- * Heidenhain CYCL DEF → Siemens CYCLE81-89.
- */
 function transformHeidenhainToSiemensCycles(
   blocks: NeutralIRBlock[],
   ctx: TransformerContext,
 ): NeutralIRBlock[] {
   if (ctx.sourceFamily !== "heidenhain" || ctx.targetFamily !== "siemens") return blocks;
-
-  const cycleMap: Record<string, string> = {
-    "200": "CYCLE81",
-    "201": "CYCLE82",
-    "202": "CYCLE83",
-    "203": "CYCLE84",
-    "204": "CYCLE85",
-  };
-
-  return blocks.map((block) => {
-    if (!block.cycle) return block;
-    const origId = block.cycle.originalCycleId ?? "";
-    const numMatch = origId.match(/\d+/);
-    const num = numMatch ? numMatch[0] : "";
-    const targetId = cycleMap[num];
-    if (!targetId) return block;
-
-    return {
-      ...block,
-      cycle: {
-        ...block.cycle,
-        originalCycleId: targetId,
-      },
-      transformations: [
-        ...block.transformations,
-        {
-          ruleId: `HH_CYCL_DEF_${num}_TO_${targetId}`,
-          description: `Heidenhain CYCL DEF ${num} → Siemens ${targetId}`,
-          source: origId,
-          target: targetId,
-        },
-      ],
-      audit: [
-        ...block.audit,
-        {
-          ruleId: `HH_CYCL_DEF_${num}_TO_${targetId}`,
-          description: `Cycle mapping: CYCL DEF ${num} → ${targetId}`,
-          source: origId,
-          target: targetId,
-          confidence: "exact",
-        },
-      ],
-    };
-  });
+  return mapCycles(blocks, HEIDENHAIN_TO_SIEMENS, "Heidenhain", "Siemens");
 }
 
-/**
- * Fanuc G81-G89 → Heidenhain CYCL DEF 200-208.
- */
 function transformFanucToHeidenhainCycles(
   blocks: NeutralIRBlock[],
   ctx: TransformerContext,
 ): NeutralIRBlock[] {
   if (ctx.sourceFamily !== "fanuc" || ctx.targetFamily !== "heidenhain") return blocks;
+  return mapCycles(blocks, FANUC_TO_HEIDENHAIN, "Fanuc", "Heidenhain");
+}
 
-  const cycleMap: Record<string, string> = {
-    G81: "CYCL DEF 200",
-    G82: "CYCL DEF 201",
-    G83: "CYCL DEF 202",
-    G84: "CYCL DEF 203",
-    G85: "CYCL DEF 204",
-  };
-
+function mapCycles(
+  blocks: NeutralIRBlock[],
+  mappings: CycleMapping[],
+  sourceLabel: string,
+  targetLabel: string,
+): NeutralIRBlock[] {
   return blocks.map((block) => {
-    if (!block.cycle) return block;
-    const origId = block.cycle.originalCycleId?.toUpperCase() ?? "";
-    const targetId = cycleMap[origId];
-    if (!targetId) return block;
+    if (!block.cycle?.originalCycleId) return block;
 
+    const mapping = findCycleMapping(block.cycle.originalCycleId, mappings);
+    if (!mapping) return block;
+
+    const ruleId = `CYCLE_${sanitize(mapping.source)}_TO_${sanitize(mapping.target)}`;
     return {
       ...block,
       cycle: {
         ...block.cycle,
-        originalCycleId: targetId,
-        type: block.cycle.type,
-        retractPlane: block.cycle.retractPlane,
-        depth: block.cycle.depth,
+        sourceCycleId: block.cycle.sourceCycleId ?? block.cycle.originalCycleId,
+        originalCycleId: mapping.target,
       },
       transformations: [
         ...block.transformations,
         {
-          ruleId: `CYCLE_${origId}_TO_HH`,
-          description: `Fanuc ${origId} → Heidenhain ${targetId}`,
-          source: origId,
-          target: targetId,
+          ruleId,
+          description: `${sourceLabel} ${mapping.source} to ${targetLabel} ${mapping.target}`,
+          source: mapping.source,
+          target: mapping.target,
         },
       ],
       audit: [
         ...block.audit,
         {
-          ruleId: `CYCLE_${origId}_TO_HH`,
-          description: `Cycle mapping: ${origId} → ${targetId}`,
-          source: origId,
-          target: targetId,
-          confidence: "exact",
+          ruleId,
+          description: `Cycle mapping: ${mapping.source} to ${mapping.target} (${mapping.description})`,
+          source: mapping.source,
+          target: mapping.target,
+          confidence: mapping.confidence,
         },
       ],
     };
   });
 }
 
-/**
- * Siemens T="name" → comment for non-Siemens targets.
- */
+function findCycleMapping(
+  sourceCycle: string,
+  mappings: CycleMapping[],
+): CycleMapping | undefined {
+  const normalizedSource = normalizeCycleId(sourceCycle);
+  return mappings.find((mapping) => normalizeCycleId(mapping.source) === normalizedSource);
+}
+
+function normalizeCycleId(cycle: string): string {
+  const upper = cycle.toUpperCase().trim();
+  const hh = upper.match(/CYCL\s+DEF\s+(\d+)/);
+  if (hh) return `CYCL DEF ${hh[1]}`;
+  const siemens = upper.match(/CYCLE(\d+)/);
+  if (siemens) return `CYCLE${siemens[1]}`;
+  const fanuc = upper.match(/G0?(\d+)/);
+  if (fanuc) return `G${fanuc[1]}`;
+  return upper;
+}
+
+function sanitize(value: string): string {
+  return value.replace(/[^A-Z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
+}
+
 function transformSiemensToolNameToComment(
   blocks: NeutralIRBlock[],
   ctx: TransformerContext,

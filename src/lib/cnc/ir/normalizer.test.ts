@@ -153,11 +153,12 @@ describe("normalizeBlock — fixed cycles", () => {
       gCodes: ["G84"],
       axes: { Z: -15 },
       addresses: { R: 2, P: 1.5 },
+      feed: 200,
     });
     const ir = normalizeBlock(block, "fanuc-0i", 0);
     expect(ir.type).toBe("cycle-tap");
     expect(ir.cycle!.type).toBe("tap");
-    expect(ir.cycle!.pitch).toBe(1.5);
+    expect(ir.cycle!.feedRate).toBe(200);
   });
 
   it("normalizes G85 to cycle-bore", () => {
@@ -334,15 +335,45 @@ describe("normalizeBlock — tool definitions", () => {
     });
     const ir = normalizeBlock(block, "fanuc-0i", 0);
     expect(ir.type).toBe("tool-change");
-  });    it("normalizes T + non-M6 M-code as the M-code block (M08 comes before tool-def check)", () => {
+  });
+
+  it("normalizes T + non-M6 M-code as separate semantic blocks", () => {
       const block = makeBlock({
         raw: "T01 M08",
         toolNumber: 1,
         mCodes: ["M08"],
       });
-      const ir = normalizeBlock(block, "fanuc-0i", 0);
-      // M08 is processed before the tool-definition fallback check
-      expect(ir.type).toBe("coolant-flood");
+      const ir = normalizeProgram([block], "fanuc-0i");
+      expect(ir.map((b) => b.type)).toEqual(["tool-definition", "coolant-flood"]);
+  });
+
+  it("keeps same-line G43 target on tool length comp, not the motion modal", () => {
+    const block = makeBlock({
+      raw: "G00 G43 H01 Z100",
+      gCodes: ["G00", "G43"],
+      axes: { Z: 100 },
+      addresses: { H: 1 },
+    });
+
+    const ir = normalizeProgram([block], "fanuc-0i");
+    expect(ir.map((b) => b.type)).toEqual(["rapid", "tool-length-comp"]);
+    expect(ir[0].target).toBeUndefined();
+    expect(ir[1].target).toEqual({ z: 100 });
+    expect(ir[1].toolLengthOffset).toBe(1);
+  });
+
+  it("orders same-line straight motion mode before G43 even when G43 appears first", () => {
+    const block = makeBlock({
+      raw: "G43 G00 H01 Z100",
+      gCodes: ["G43", "G00"],
+      axes: { Z: 100 },
+      addresses: { H: 1 },
+    });
+
+    const ir = normalizeProgram([block], "fanuc-0i");
+    expect(ir.map((b) => b.type)).toEqual(["rapid", "tool-length-comp"]);
+    expect(ir[0].target).toBeUndefined();
+    expect(ir[1].target).toEqual({ z: 100 });
   });
 });
 
@@ -361,8 +392,38 @@ describe("normalizeBlock — Siemens cycles", () => {
     expect(ir.type).toBe("cycle-drill");
     expect(ir.cycle).toBeDefined();
     expect(ir.cycle!.type).toBe("drill");
-    expect(ir.cycle!.retractPlane).toBe(1); // rfp + sdis = 0 + 1
+    expect(ir.cycle!.retractPlane).toBe(2);
+    expect(ir.cycle!.referencePlane).toBe(0);
+    expect(ir.cycle!.safetyClearance).toBe(1);
     expect(ir.cycle!.depth).toBe(10);
+    expect(ir.cycle!.absoluteDepth).toBe(10);
+    expect(ir.cycle!.relativeDepth).toBe(10);
+  });
+
+  it("preserves Siemens DPR-only cycles separately from absolute DP", () => {
+    const block = makeBlock({
+      raw: "CYCLE81(5,0,1,0,-12)",
+      siemensCycleCall: "CYCLE81(5,0,1,0,-12)",
+      cycle: "CYCLE81",
+      cycleParams: [5, 0, 1, 0, -12],
+    });
+    const ir = normalizeBlock(block, "siemens-840d", 0);
+    expect(ir.cycle!.depth).toBe(12);
+    expect(ir.cycle!.absoluteDepth).toBeUndefined();
+    expect(ir.cycle!.relativeDepth).toBe(-12);
+  });
+
+  it("computes neutral depth from Siemens absolute DP and reference plane", () => {
+    const block = makeBlock({
+      raw: "CYCLE81(52,50,2,38,0)",
+      siemensCycleCall: "CYCLE81(52,50,2,38,0)",
+      cycle: "CYCLE81",
+      cycleParams: [52, 50, 2, 38, 0],
+    });
+    const ir = normalizeBlock(block, "siemens-840d", 0);
+    expect(ir.cycle!.depth).toBe(12);
+    expect(ir.cycle!.absoluteDepth).toBe(38);
+    expect(ir.cycle!.referencePlane).toBe(50);
   });
 
   it("normalizes CYCLE82 with dwell", () => {
@@ -374,10 +435,7 @@ describe("normalizeBlock — Siemens cycles", () => {
     });
     const ir = normalizeBlock(block, "siemens-840d", 0);
     expect(ir.type).toBe("cycle-drill");
-    // CYCLE82: params[4] = first DP param, dwell is params[5]
-    // Looking at code: CYCLE82 uses params[4] for dwell
-    // params are [2,0,1,10,10,0.5], params[4] is 10, not 0.5
-    expect(ir.cycle!.dwell).toBe(10);
+    expect(ir.cycle!.dwell).toBe(0.5);
   });
 
   it("normalizes CYCLE83 to cycle-peck-drill", () => {
@@ -391,7 +449,8 @@ describe("normalizeBlock — Siemens cycles", () => {
     expect(ir.type).toBe("cycle-peck-drill");
     expect(ir.cycle!.type).toBe("peck-drill");
     expect(ir.cycle!.depth).toBe(20);
-    expect(ir.cycle!.retractPlane).toBe(1); // rfp + sdis = 0 + 1
+    expect(ir.cycle!.retractPlane).toBe(2);
+    expect(ir.audit[0].confidence).toBe("approximate");
   });
 
   it("normalizes CYCLE84 to cycle-tap", () => {
@@ -498,26 +557,26 @@ describe("normalizeBlock — Heidenhain commands", () => {
     expect(ir.cycle!.type).toBe("drill");
   });
 
-  it("normalizes CYCL DEF 202 to cycle-peck-drill", () => {
+  it("normalizes CYCL DEF 202 to cycle-bore", () => {
     const block = makeBlock({
       raw: "CYCL DEF 202 PECKING",
       heidenhainCommand: "CYCL DEF",
       cycle: "202",
     });
     const ir = normalizeBlock(block, "heidenhain-tnc640", 0);
-    expect(ir.type).toBe("cycle-peck-drill");
-    expect(ir.cycle!.type).toBe("peck-drill");
+    expect(ir.type).toBe("cycle-bore");
+    expect(ir.cycle!.type).toBe("bore");
   });
 
-  it("normalizes CYCL DEF 203 to cycle-tap", () => {
+  it("normalizes CYCL DEF 203 to cycle-peck-drill", () => {
     const block = makeBlock({
       raw: "CYCL DEF 203 TAPPING",
       heidenhainCommand: "CYCL DEF",
       cycle: "203",
     });
     const ir = normalizeBlock(block, "heidenhain-tnc640", 0);
-    expect(ir.type).toBe("cycle-tap");
-    expect(ir.cycle!.type).toBe("tap");
+    expect(ir.type).toBe("cycle-peck-drill");
+    expect(ir.cycle!.type).toBe("peck-drill");
   });
 
   it("normalizes CYCL CALL to cycle-call", () => {
@@ -621,6 +680,71 @@ describe("normalizeBlock — comments and fallback", () => {
 // normalizeProgram (batch)
 // ==========================================
 describe("normalizeProgram", () => {
+  it("expands multiple modal G-codes from one source block", () => {
+    const blocks: CNCBlock[] = [
+      makeBlock({ raw: "G90 G54 G17 G21", gCodes: ["G90", "G54", "G17", "G21"] }),
+    ];
+
+    const ir = normalizeProgram(blocks, "fanuc-0i");
+    expect(ir.map((b) => b.type)).toEqual([
+      "absolute-mode",
+      "work-offset",
+      "plane-xy",
+      "units-metric",
+    ]);
+  });
+
+  it("keeps distance mode before same-line incremental motion", () => {
+    const blocks: CNCBlock[] = [
+      makeBlock({
+        raw: "G91 G01 X10 F100",
+        gCodes: ["G91", "G01"],
+        axes: { X: 10 },
+        feed: 100,
+      }),
+    ];
+
+    const ir = normalizeProgram(blocks, "fanuc-0i");
+    expect(ir.map((b) => b.type)).toEqual(["incremental-mode", "linear"]);
+    expect(ir[1].target).toEqual({ x: 10 });
+  });
+
+  it("expands mixed M-codes from one source block", () => {
+    const blocks: CNCBlock[] = [
+      makeBlock({ raw: "S5000 M03 M08", mCodes: ["M03", "M08"], spindleSpeed: 5000 }),
+    ];
+
+    const ir = normalizeProgram(blocks, "fanuc-0i");
+    expect(ir.map((b) => b.type)).toEqual(["spindle-forward", "coolant-flood"]);
+    expect(ir[0].spindleSpeed).toBe(5000);
+  });
+
+  it("attaches Heidenhain Q parameter lines to the active cycle definition", () => {
+    const blocks: CNCBlock[] = [
+      makeBlock({ raw: "CYCL DEF 200 DRILLING", heidenhainCommand: "CYCL DEF", cycle: "200" }),
+      makeBlock({ raw: "Q200=+2", heidenhainCommand: "Q", qParams: { Q200: 2 } }),
+      makeBlock({ raw: "Q201=-12", heidenhainCommand: "Q", qParams: { Q201: -12 } }),
+      makeBlock({ raw: "Q206=100", heidenhainCommand: "Q", qParams: { Q206: 100 } }),
+      makeBlock({ raw: "Q202=3", heidenhainCommand: "Q", qParams: { Q202: 3 } }),
+      makeBlock({ raw: "Q203=+0", heidenhainCommand: "Q", qParams: { Q203: 0 } }),
+      makeBlock({ raw: "Q204=5", heidenhainCommand: "Q", qParams: { Q204: 5 } }),
+      makeBlock({ raw: "Q211=0.4", heidenhainCommand: "Q", qParams: { Q211: 0.4 } }),
+      makeBlock({ raw: "CYCL CALL", heidenhainCommand: "CYCL CALL" }),
+    ];
+
+    const ir = normalizeProgram(blocks, "heidenhain-tnc640");
+    expect(ir.map((b) => b.type)).toEqual(["cycle-drill", "cycle-call"]);
+    expect(ir[0].cycle).toMatchObject({
+      originalCycleId: "CYCL DEF 200",
+      depth: 12,
+      feedRate: 100,
+      peckDepth: 3,
+      surfaceCoordinate: 0,
+      secondSetupClearance: 5,
+      dwell: 0.4,
+    });
+  });
+
   it("normalizes a sequence of blocks", () => {
     const blocks: CNCBlock[] = [
       makeBlock({ raw: "O1000", isProgramStart: true }),

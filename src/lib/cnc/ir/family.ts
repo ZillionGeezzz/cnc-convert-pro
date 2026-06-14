@@ -13,10 +13,10 @@ export function getControllerFamily(format: ControllerFormat): string {
     if (format === "mazak-eia") return "fanuc";
     return "mazak";
   }
-  if (format === "okuma-osp") return "okuma";
-  if (format === "haas") return "haas";
+  if (format === "okuma-osp") return "fanuc";
+  if (format === "haas") return "fanuc";
   if (format === "brother-speedio") return "fanuc";
-  if (format === "fagor-8055") return "fagor";
-  if (format === "bosch-mtx") return "bosch";
+  if (format === "fagor-8055") return "fanuc";
+  if (format === "bosch-mtx") return "siemens";
   return "fanuc";
 }

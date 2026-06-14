@@ -106,8 +106,8 @@ describe("applyTransformations", () => {
     });
 
     it("maps CYCL DEF 201-208 → G82-G89", () => {
-      const hhCodes = ["200", "201", "202", "203", "204", "205", "206", "207", "208"];
-      const gCodes = ["G81", "G82", "G83", "G84", "G85", "G86", "G87", "G88", "G89"];
+      const hhCodes = ["200", "201", "202", "203", "204", "205", "206", "207"];
+      const gCodes = ["G81", "G85", "G85", "G83", "G87", "G83", "G84", "G84"];
 
       for (let i = 0; i < hhCodes.length; i++) {
         const blocks = [
@@ -146,8 +146,8 @@ describe("applyTransformations", () => {
     });
 
     it("maps CYCL DEF 200-204 → CYCLE81-85", () => {
-      const hhCodes = ["200", "201", "202", "203", "204"];
-      const siemensCodes = ["CYCLE81", "CYCLE82", "CYCLE83", "CYCLE84", "CYCLE85"];
+      const hhCodes = ["200", "201", "202", "203", "204", "205", "206", "207"];
+      const siemensCodes = ["CYCLE81", "CYCLE85", "CYCLE85", "CYCLE83", "CYCLE87", "CYCLE83", "CYCLE84", "CYCLE84"];
 
       for (let i = 0; i < hhCodes.length; i++) {
         const blocks = [
@@ -167,7 +167,8 @@ describe("applyTransformations", () => {
         }),
       ];
       const result = applyTransformations(blocks, src, tgt);
-      expect(result[0].cycle!.originalCycleId).toBe("CYCL DEF 205");
+      expect(result[0].cycle!.originalCycleId).toBe("CYCLE83");
+      expect(result[0].audit[result[0].audit.length - 1]?.confidence).toBe("approximate");
     });
   });
 
@@ -187,7 +188,7 @@ describe("applyTransformations", () => {
 
     it("maps G81-G85 → CYCL DEF 200-204", () => {
       const gCodes = ["G81", "G82", "G83", "G84", "G85"];
-      const hhCodes = ["CYCL DEF 200", "CYCL DEF 201", "CYCL DEF 202", "CYCL DEF 203", "CYCL DEF 204"];
+      const hhCodes = ["CYCL DEF 200", "CYCL DEF 200", "CYCL DEF 203", "CYCL DEF 206", "CYCL DEF 202"];
 
       for (let i = 0; i < gCodes.length; i++) {
         const blocks = [
@@ -207,7 +208,8 @@ describe("applyTransformations", () => {
         }),
       ];
       const result = applyTransformations(blocks, src, tgt);
-      expect(result[0].cycle!.originalCycleId).toBe("G86");
+      expect(result[0].cycle!.originalCycleId).toBe("CYCL DEF 202");
+      expect(result[0].audit[result[0].audit.length - 1]?.confidence).toBe("approximate");
     });
   });
 

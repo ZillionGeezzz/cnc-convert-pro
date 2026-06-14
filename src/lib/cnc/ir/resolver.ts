@@ -21,6 +21,8 @@ export interface ResolutionResult {
   resolvedCount: number;
 }
 
+type CycleReturnMode = "initial" | "r-plane";
+
 /**
  * Resolve incremental moves into absolute coordinates.
  *
@@ -33,8 +35,9 @@ export function resolveCoordinates(
   initialPosition: Record<string, number> = {},
 ): ResolutionResult {
   let resolvedCount = 0;
-  const currentPosition: Record<string, number> = { ...initialPosition };
+  const currentPosition = normalizePosition(initialPosition);
   let isIncremental = false;
+  let cycleReturnMode: CycleReturnMode = "initial";
 
   const resolved = blocks.map((block) => {
     // Track distance mode changes
@@ -42,13 +45,24 @@ export function resolveCoordinates(
       isIncremental = true;
       return {
         ...block,
+        type: "absolute-mode" as const,
         transformations: [
           ...block.transformations,
           {
-            ruleId: "G91_MODE",
-            description: "Incremental mode — subsequent moves will be resolved to absolute",
+            ruleId: "G91_MODE_TO_G90_OUTPUT",
+            description: "Incremental mode resolved to absolute output mode for subsequent moves",
             source: block.raw,
-            target: block.raw,
+            target: "G90",
+          },
+        ],
+        audit: [
+          ...block.audit,
+          {
+            ruleId: "G91_MODE_TO_G90_OUTPUT",
+            description: "G91 incremental source mode converted to G90 output mode after coordinate resolution",
+            source: block.raw,
+            target: "G90",
+            confidence: "exact" as const,
           },
         ],
       };
@@ -59,33 +73,33 @@ export function resolveCoordinates(
       return block;
     }
 
-    // Only resolve motion blocks with targets when in incremental mode
+    if (block.type === "cycle-return-initial") {
+      cycleReturnMode = "initial";
+      return block;
+    }
+
+    if (block.type === "cycle-return-r-plane") {
+      cycleReturnMode = "r-plane";
+      return block;
+    }
+
+    // Resolve any output-bearing position block when in incremental mode.
     if (
       isIncremental &&
-      block.target &&
-      isMotionBlock(block.type)
+      isPositionBearingBlock(block.type) &&
+      (block.target || block.cycle)
     ) {
-      const originalTarget = { ...block.target };
-      const resolvedTarget: AxisTarget = {};
-
-      for (const [axis, value] of Object.entries(block.target)) {
-        const key = axis.toLowerCase() as keyof AxisTarget;
-        if (typeof value !== "number") {
-          (resolvedTarget as Record<string, any>)[key] = value;
-          continue;
-        }
-
-        const currentVal = currentPosition[key.toUpperCase()] ?? 0;
-        const absoluteValue = currentVal + value;
-        (resolvedTarget as Record<string, any>)[key] = absoluteValue;
-      }
+      const originalTarget = block.target ? { ...block.target } : {};
+      const resolvedTarget = block.target
+        ? resolveTarget(block.target, currentPosition)
+        : undefined;
+      const auditTarget = resolvedTarget ?? {};
+      const resolvedCycle = block.cycle
+        ? resolveIncrementalCycle(block, currentPosition, cycleReturnMode)
+        : undefined;
 
       // Update position tracker
-      for (const [axis, value] of Object.entries(resolvedTarget)) {
-        if (typeof value === "number") {
-          currentPosition[axis.toUpperCase()] = value;
-        }
-      }
+      updateCurrentPosition(currentPosition, resolvedTarget, resolvedCycle);
 
       resolvedCount++;
 
@@ -93,18 +107,19 @@ export function resolveCoordinates(
         ruleId: "G91_TO_G90",
         description: `Incremental → absolute coordinate resolution`,
         source: formatDelta(originalTarget),
-        target: formatTarget(resolvedTarget),
+        target: formatTarget(auditTarget),
         confidence: "exact" as const,
       };
 
       return {
         ...block,
-        target: resolvedTarget,
+        target: resolvedTarget ?? block.target,
+        cycle: resolvedCycle ?? block.cycle,
         transformations: [
           ...block.transformations,
           {
             ruleId: "G91_TO_G90",
-            description: `Resolved G91 incremental move to absolute: ${formatDelta(originalTarget)} → ${formatTarget(resolvedTarget)}`,
+            description: `Resolved G91 incremental move to absolute: ${formatDelta(originalTarget)} → ${formatTarget(auditTarget)}`,
             source: block.raw,
             target: `(resolved) ${block.raw}`,
           },
@@ -116,12 +131,17 @@ export function resolveCoordinates(
       };
     }
 
-    // Update position for absolute moves as well
-    if (block.target && !isIncremental && isMotionBlock(block.type)) {
-      for (const [axis, value] of Object.entries(block.target)) {
-        if (typeof value === "number") {
-          currentPosition[axis.toUpperCase()] = value;
-        }
+    // Update position for absolute output-bearing blocks as well.
+    if (!isIncremental && isPositionBearingBlock(block.type) && (block.target || block.cycle)) {
+      const cycleWithReturnPlane = block.cycle
+        ? applyCycleReturnPlane(block.cycle, currentPosition, cycleReturnMode)
+        : undefined;
+      updateCurrentPosition(currentPosition, block.target, cycleWithReturnPlane);
+      if (cycleWithReturnPlane && cycleWithReturnPlane !== block.cycle) {
+        return {
+          ...block,
+          cycle: cycleWithReturnPlane,
+        };
       }
     }
 
@@ -138,26 +158,130 @@ export function resolveCoordinates(
   return { blocks: resolved, resolvedCount };
 }
 
-function isMotionBlock(type: string): boolean {
+function isPositionAxis(axis: string): boolean {
+  return ["x", "y", "z", "a", "b", "c", "u", "v", "w"].includes(axis.toLowerCase());
+}
+
+function isPositionBearingBlock(type: string): boolean {
   return [
     "rapid",
     "linear",
     "clockwise-arc",
     "counterclockwise-arc",
     "helical",
+    "tool-length-comp",
+    "cycle-drill",
+    "cycle-peck-drill",
+    "cycle-tap",
+    "cycle-bore",
+    "cycle-other",
   ].includes(type);
+}
+
+function normalizePosition(position: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(position).map(([axis, value]) => [axis.toUpperCase(), value]),
+  );
+}
+
+function resolveTarget(target: AxisTarget, currentPosition: Record<string, number>): AxisTarget {
+  const resolvedTarget: AxisTarget = {};
+
+  for (const [axis, value] of Object.entries(target)) {
+    const key = axis.toLowerCase() as keyof AxisTarget;
+    if (typeof value !== "number") continue;
+
+    if (!isPositionAxis(axis)) {
+      resolvedTarget[key] = value;
+      continue;
+    }
+
+    const currentVal = currentPosition[key.toUpperCase()] ?? 0;
+    resolvedTarget[key] = currentVal + value;
+  }
+
+  return resolvedTarget;
+}
+
+function resolveIncrementalCycle(
+  block: NeutralIRBlock,
+  currentPosition: Record<string, number>,
+  cycleReturnMode: CycleReturnMode,
+): NeutralIRBlock["cycle"] {
+  if (!block.cycle) return undefined;
+  if (!isFanucStyleCycle(block.cycle.originalCycleId)) return block.cycle;
+
+  const currentZ = currentPosition.Z;
+  const coordinateBaseZ = currentZ ?? 0;
+  const absoluteDepth = block.cycle.absoluteDepth !== undefined
+    ? coordinateBaseZ + block.cycle.absoluteDepth
+    : undefined;
+  const retractPlane = coordinateBaseZ + block.cycle.retractPlane;
+  const referencePlane = coordinateBaseZ;
+
+  return {
+    ...block.cycle,
+    retractPlane,
+    returnPlane: cycleReturnMode === "r-plane" ? retractPlane : currentZ,
+    referencePlane,
+    safetyClearance: Math.abs(retractPlane - referencePlane),
+    depth: absoluteDepth !== undefined
+      ? Math.abs(referencePlane - absoluteDepth)
+      : block.cycle.depth,
+    absoluteDepth,
+    relativeDepth: undefined,
+  };
+}
+
+function applyCycleReturnPlane(
+  cycle: NonNullable<NeutralIRBlock["cycle"]>,
+  currentPosition: Record<string, number>,
+  cycleReturnMode: CycleReturnMode,
+): NonNullable<NeutralIRBlock["cycle"]> {
+  if (!isFanucStyleCycle(cycle.originalCycleId)) {
+    return cycle.returnPlane !== undefined ? cycle : { ...cycle, returnPlane: cycle.retractPlane };
+  }
+
+  if (cycleReturnMode === "r-plane") {
+    return { ...cycle, returnPlane: cycle.retractPlane };
+  }
+
+  return currentPosition.Z !== undefined
+    ? { ...cycle, returnPlane: currentPosition.Z }
+    : { ...cycle, returnPlane: undefined };
+}
+
+function isFanucStyleCycle(originalCycleId: string | undefined): boolean {
+  return !!originalCycleId && /^G0?8[1-9]$/i.test(originalCycleId.trim());
+}
+
+function updateCurrentPosition(
+  currentPosition: Record<string, number>,
+  target?: AxisTarget,
+  cycle?: NeutralIRBlock["cycle"],
+): void {
+  if (target) {
+    for (const [axis, value] of Object.entries(target)) {
+      if (typeof value === "number" && isPositionAxis(axis)) {
+        if (cycle && axis.toLowerCase() === "z") continue;
+        currentPosition[axis.toUpperCase()] = value;
+      }
+    }
+  }
+
+  if (cycle?.returnPlane !== undefined) {
+    currentPosition.Z = cycle.returnPlane;
+  }
 }
 
 function formatTarget(target: AxisTarget): string {
   return Object.entries(target)
-    .filter(([_, v]) => typeof v === "number")
-    .map(([k, v]) => `${k.toUpperCase()}${(v as number).toFixed(3)}`)
+    .flatMap(([k, v]) => (typeof v === "number" ? [`${k.toUpperCase()}${v.toFixed(3)}`] : []))
     .join(" ");
 }
 
 function formatDelta(target: AxisTarget): string {
   return Object.entries(target)
-    .filter(([_, v]) => typeof v === "number")
-    .map(([k, v]) => `${k.toUpperCase()}${(v as number) >= 0 ? "+" : ""}${(v as number).toFixed(3)}`)
+    .flatMap(([k, v]) => (typeof v === "number" ? [`${k.toUpperCase()}${v >= 0 ? "+" : ""}${v.toFixed(3)}`] : []))
     .join(" ");
 }

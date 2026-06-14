@@ -27,7 +27,7 @@ The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_UR
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 
-Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
+Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, SITE_URL, and VLY_EMAIL_API_KEY.
 
 
 # Using Authentication (Important!)
