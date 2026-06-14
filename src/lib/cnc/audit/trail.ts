@@ -59,29 +59,39 @@ export class AuditTrail {
 
     lines.push(`${header}${style.close}`);
     lines.push(`${header} CNC Conversion Audit Trail`);
-    lines.push(`${header} Source: ${sourceFormat} → Target: ${format}`);
+    lines.push(`${header} Source: ${sourceFormat} -> Target: ${format}`);
     lines.push(`${header} ${this.entries.length} transformations applied`);
     lines.push(`${header}${style.close}`);
 
     // Group by confidence
-    const exactCount = this.entries.filter((e) => e.confidence === "exact").length;
-    const approxCount = this.entries.filter((e) => e.confidence === "approximate").length;
-    const reviewCount = this.entries.filter((e) => e.confidence === "manual-review-needed").length;
+    const exactCount = this.entries.filter(
+      (e) => e.confidence === "exact",
+    ).length;
+    const approxCount = this.entries.filter(
+      (e) => e.confidence === "approximate",
+    ).length;
+    const reviewCount = this.entries.filter(
+      (e) => e.confidence === "manual-review-needed",
+    ).length;
 
     if (exactCount > 0) {
       lines.push(`${header}   Exact: ${exactCount}`);
     }
     if (approxCount > 0) {
-      lines.push(`${header}   Approximate: ${approxCount} — manual check recommended`);
+      lines.push(
+        `${header}   Approximate: ${approxCount} - manual check recommended`,
+      );
     }
     if (reviewCount > 0) {
       lines.push(`${header}   Manual review needed: ${reviewCount}`);
     }
 
     // Detail for manual-review-needed entries
-    const needsReview = this.entries.filter((e) => e.confidence === "manual-review-needed");
+    const needsReview = this.entries.filter(
+      (e) => e.confidence === "manual-review-needed",
+    );
     for (const entry of needsReview) {
-      lines.push(`${header}   ⚠ ${entry.description}: ${entry.source}`);
+      lines.push(`${header}   Review: ${entry.description}: ${entry.source}`);
     }
 
     lines.push(`${header}${style.close}`);
@@ -102,7 +112,9 @@ export class AuditTrail {
 
     // Only add inline comment for approximate/manual-review
     const lowConfidence = block.audit.filter(
-      (a) => a.confidence === "approximate" || a.confidence === "manual-review-needed",
+      (a) =>
+        a.confidence === "approximate" ||
+        a.confidence === "manual-review-needed",
     );
     if (lowConfidence.length === 0) return "";
 
@@ -132,23 +144,14 @@ interface CommentStyle {
  */
 function getCommentStyle(format: ControllerFormat): CommentStyle {
   // Semicolon-based: Siemens, Heidenhain, Fagor, Bosch
-  if (format.startsWith("siemens") || format.startsWith("heidenhain") || format === "fagor-8055" || format === "bosch-mtx") {
+  if (
+    format.startsWith("siemens") ||
+    format.startsWith("heidenhain") ||
+    format === "fagor-8055" ||
+    format === "bosch-mtx"
+  ) {
     return { open: ";", close: "" };
   }
   // Parenthesis-based: Fanuc, Haas, Mitsubishi, Brother, Okuma, Mazak EIA
   return { open: "(", close: ")" };
-}
-
-/**
- * Determine comment character for a given format (backwards-compatible).
- */
-function getCommentChar(format: ControllerFormat): string {
-  return getCommentStyle(format).open;
-}
-
-/**
- * Get header prefix character per format (backwards-compatible).
- */
-function getHeader(format: ControllerFormat): string {
-  return getCommentStyle(format).open;
 }

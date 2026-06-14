@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { MinimalHeader } from "@/components/MinimalHeader";
 import { CNCEditor } from "@/components/CNCEditor";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -13,9 +13,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { convertProgram } from "@/lib/cnc/converters";
-import { CONTROLLERS, type ControllerFormat, type ConversionResult } from "@/lib/cnc/types";
-import { ArrowLeftRight, RotateCcw, Download, Copy, Check, FileCode } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  CONTROLLERS,
+  type ControllerFormat,
+  type ConversionResult,
+} from "@/lib/cnc/types";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Check,
+  CircleCheck,
+  Copy,
+  Download,
+  FileCode,
+  RotateCcw,
+} from "lucide-react";
 
 const DEFAULT_SIEMENS = `%_N_SAMPLE_PROGRAM_MPF
 ;Sample Siemens 840D program
@@ -62,28 +74,23 @@ M02
 %`;
 
 export default function Converter() {
-  const [sourceFormat, setSourceFormat] = useState<ControllerFormat>("siemens-840d");
-  const [targetFormat, setTargetFormat] = useState<ControllerFormat>("mitsubishi-m80");
+  const [sourceFormat, setSourceFormat] =
+    useState<ControllerFormat>("siemens-840d");
+  const [targetFormat, setTargetFormat] =
+    useState<ControllerFormat>("mitsubishi-m80");
   const [input, setInput] = useState(DEFAULT_SIEMENS);
-  const [result, setResult] = useState<ConversionResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
-  // Auto-convert on input change or format change
-  useEffect(() => {
-    if (!input.trim()) {
-      setResult(null);
-      return;
-    }
-    const conversionResult = convertProgram(input, { sourceFormat, targetFormat });
-    setResult(conversionResult);
+  const result = useMemo<ConversionResult | null>(() => {
+    if (!input.trim()) return null;
+    return convertProgram(input, { sourceFormat, targetFormat });
   }, [input, sourceFormat, targetFormat]);
 
   const swapFormats = useCallback(() => {
     setSourceFormat(targetFormat);
     setTargetFormat(sourceFormat);
     setInput(result?.output || "");
-    setResult(null);
   }, [sourceFormat, targetFormat, result]);
 
   const handleCopy = useCallback(async () => {
@@ -106,157 +113,215 @@ export default function Converter() {
   }, [result, targetFormat]);
 
   const handleReset = useCallback(() => {
-    const defaultCode = sourceFormat === "siemens-840d" ? DEFAULT_SIEMENS : DEFAULT_MITSUBISHI;
+    const defaultCode =
+      sourceFormat === "siemens-840d" ? DEFAULT_SIEMENS : DEFAULT_MITSUBISHI;
     setInput(defaultCode);
-    const conversionResult = convertProgram(defaultCode, { sourceFormat, targetFormat });
-    setResult(conversionResult);
-  }, [sourceFormat, targetFormat]);
+  }, [sourceFormat]);
 
-  const sourceLabel = CONTROLLERS.find((c) => c.id === sourceFormat)?.name || sourceFormat;
-  const targetLabel = CONTROLLERS.find((c) => c.id === targetFormat)?.name || targetFormat;
+  const sourceLabel =
+    CONTROLLERS.find((controller) => controller.id === sourceFormat)?.name ||
+    sourceFormat;
+  const targetLabel =
+    CONTROLLERS.find((controller) => controller.id === targetFormat)?.name ||
+    targetFormat;
+  const editorMinHeight = "clamp(320px, 54dvh, 560px)";
+  const issueCount =
+    (result?.errors.length ?? 0) + (result?.warnings.length ?? 0);
+  const diagnosticsOpen =
+    showDiagnostics &&
+    !!result &&
+    (result.warnings.length > 0 || result.errors.length > 0);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
+    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_0%,color-mix(in_oklch,var(--primary)_16%,transparent),transparent_34%),linear-gradient(180deg,color-mix(in_oklch,var(--muted)_60%,transparent),transparent_32rem)]" />
       <MinimalHeader />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page header */}
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-8"
+          className="mb-4 sm:mb-6"
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg font-medium text-foreground">CNC Converter</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Convert CNC programs between controller formats in real time
+          <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                CNC Converter
+              </h1>
+              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                Convert controller programs in real time, then review the audit
+                trail before the code hits the floor.
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={handleReset}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {result && (
+                <>
+                  <Badge
+                    variant={result.success ? "default" : "destructive"}
+                    className="gap-1.5"
+                  >
+                    {result.success ? (
+                      <CircleCheck data-icon />
+                    ) : (
+                      <AlertTriangle data-icon />
+                    )}
+                    {result.success ? "Converted" : "Needs review"}
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5 bg-card">
+                    <FileCode data-icon />
+                    {result.program.blocks.length} blocks
+                  </Badge>
+                  {issueCount > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="bg-card text-muted-foreground"
+                    >
+                      {issueCount} issue{issueCount !== 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                className="gap-1.5 bg-card"
+              >
+                <RotateCcw data-icon="inline-start" />
+                Reset sample
+              </Button>
+            </div>
           </div>
         </motion.div>
 
-        {/* Format selection */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="flex items-center gap-4 mb-6"
+          className="mb-4 rounded-xl border border-border bg-card/95 p-3 shadow-sm ring-1 ring-foreground/[0.03] sm:mb-5 sm:p-4"
         >
-          <div className="flex-1 max-w-xs">
-            <Label htmlFor="source-format" className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Source Format
-            </Label>
-            <Select
-              value={sourceFormat}
-              onValueChange={(v) => setSourceFormat(v as ControllerFormat)}
-            >
-              <SelectTrigger id="source-format" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CONTROLLERS.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.manufacturer} — {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-end">
+            <div className="min-w-0">
+              <Label
+                htmlFor="source-format"
+                className="mb-1.5 block text-xs font-medium text-foreground/70"
+              >
+                Source Format
+              </Label>
+              <Select
+                value={sourceFormat}
+                onValueChange={(value) =>
+                  setSourceFormat(value as ControllerFormat)
+                }
+              >
+                <SelectTrigger
+                  id="source-format"
+                  className="w-full border-border/80 bg-background/95 shadow-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONTROLLERS.map((controller) => (
+                    <SelectItem key={controller.id} value={controller.id}>
+                      {controller.manufacturer} - {controller.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <button
-            onClick={swapFormats}
-            className="mt-5 p-2 rounded-full border border-border hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
-            title="Swap formats"
-          >
-            <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />
-          </button>
-
-          <div className="flex-1 max-w-xs">
-            <Label htmlFor="target-format" className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Target Format
-            </Label>
-            <Select
-              value={targetFormat}
-              onValueChange={(v) => setTargetFormat(v as ControllerFormat)}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={swapFormats}
+              className="mx-auto bg-background/95 shadow-xs"
+              title="Swap formats"
+              aria-label="Swap source and target formats"
             >
-              <SelectTrigger id="target-format" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CONTROLLERS.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.manufacturer} — {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <ArrowLeftRight data-icon />
+            </Button>
+
+            <div className="min-w-0">
+              <Label
+                htmlFor="target-format"
+                className="mb-1.5 block text-xs font-medium text-foreground/70"
+              >
+                Target Format
+              </Label>
+              <Select
+                value={targetFormat}
+                onValueChange={(value) =>
+                  setTargetFormat(value as ControllerFormat)
+                }
+              >
+                <SelectTrigger
+                  id="target-format"
+                  className="w-full border-border/80 bg-background/95 shadow-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONTROLLERS.map((controller) => (
+                    <SelectItem key={controller.id} value={controller.id}>
+                      {controller.manufacturer} - {controller.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </motion.div>
 
-        {/* Editor columns */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6"
+          className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2"
         >
-          {/* Source editor */}
           <div>
             <CNCEditor
               value={input}
               onChange={setInput}
               label={sourceLabel}
               placeholder={`Paste or type ${sourceLabel} code...`}
-              minHeight="500px"
+              minHeight={editorMinHeight}
               errorCount={result?.errors.length}
               warningCount={result?.warnings.length}
             />
           </div>
 
-          {/* Target output */}
           <div>
             <CNCEditor
               value={result?.output || ""}
               readOnly
               label={targetLabel}
               placeholder="Converted code will appear here..."
-              minHeight="500px"
-              className="relative"
+              minHeight={editorMinHeight}
             />
 
-            {/* Toolbar overlay for output */}
             {result && (
-              <div className="flex items-center justify-end gap-2 mt-2">
+              <div className="mt-3 flex items-center justify-end gap-2">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={handleCopy}
-                  className="text-xs text-muted-foreground hover:text-foreground"
+                  className="bg-card text-xs"
                 >
                   {copied ? (
-                    <Check className="w-3.5 h-3.5 mr-1 text-green-500" />
+                    <Check data-icon="inline-start" className="text-primary" />
                   ) : (
-                    <Copy className="w-3.5 h-3.5 mr-1" />
+                    <Copy data-icon="inline-start" />
                   )}
                   {copied ? "Copied" : "Copy"}
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={handleDownload}
-                  className="text-xs text-muted-foreground hover:text-foreground"
+                  className="bg-card text-xs"
                 >
-                  <Download className="w-3.5 h-3.5 mr-1" />
+                  <Download data-icon="inline-start" />
                   Download
                 </Button>
               </div>
@@ -264,71 +329,81 @@ export default function Converter() {
           </div>
         </motion.div>
 
-        {/* Status bar */}
         {result && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
+            className="mt-5"
           >
-            <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4">
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5">
-                  <FileCode className="w-3.5 h-3.5" />
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-card/90 px-4 py-3 text-xs text-muted-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                  <FileCode className="size-3.5" />
                   {result.program.blocks.length} blocks
                 </span>
                 {result.errors.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setShowDiagnostics(!showDiagnostics)}
-                    className="text-destructive hover:underline cursor-pointer inline-flex items-center gap-1 transition-opacity"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    aria-expanded={diagnosticsOpen}
+                    aria-controls="conversion-diagnostics"
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" />
-                    {result.errors.length} error{result.errors.length !== 1 ? "s" : ""}
+                    <AlertTriangle className="size-3.5" />
+                    {result.errors.length} error
+                    {result.errors.length !== 1 ? "s" : ""}
                   </button>
                 )}
                 {result.warnings.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setShowDiagnostics(!showDiagnostics)}
-                    className="text-amber-600 dark:text-amber-400 hover:underline cursor-pointer inline-flex items-center gap-1 transition-opacity"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-amber-700 transition-colors hover:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:text-amber-300"
+                    aria-expanded={diagnosticsOpen}
+                    aria-controls="conversion-diagnostics"
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-                    {result.warnings.length} warning{result.warnings.length !== 1 ? "s" : ""}
+                    <AlertTriangle className="size-3.5" />
+                    {result.warnings.length} warning
+                    {result.warnings.length !== 1 ? "s" : ""}
                   </button>
                 )}
               </div>
-              <span className="text-zinc-400 dark:text-zinc-600">
-                {result.success ? "Conversion complete" : "Check diagnostics below"}
+              <span className="text-muted-foreground">
+                {result.success
+                  ? "Conversion complete"
+                  : "Check diagnostics below"}
               </span>
             </div>
 
-            {/* Expandable diagnostic details */}
-            {showDiagnostics && (result.warnings.length > 0 || result.errors.length > 0) && (
+            {diagnosticsOpen && (
               <motion.div
+                id="conversion-diagnostics"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.2 }}
-                className="mt-3 rounded-lg border border-border bg-zinc-50 dark:bg-zinc-900 overflow-hidden"
+                className="mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-sm"
               >
-                <div className="px-4 py-3 space-y-2 max-h-60 overflow-y-auto">
+                <div className="flex max-h-60 flex-col gap-4 overflow-y-auto px-4 py-3">
                   {result.errors.length > 0 && (
                     <div>
-                      <h4 className="text-xs font-semibold text-destructive mb-2 uppercase tracking-wider">
+                      <h4 className="mb-2 text-xs font-semibold text-destructive">
                         Errors
                       </h4>
-                      {result.errors.map((err, idx) => (
+                      {result.errors.map((error, index) => (
                         <div
-                          key={`err-${idx}`}
-                          className="flex items-start gap-2 py-1.5 text-xs border-b border-border/50 last:border-0"
+                          key={`err-${index}`}
+                          className="flex items-start gap-2 border-b border-border/50 py-1.5 text-xs last:border-0"
                         >
-                          <span className="text-destructive shrink-0 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" />
-                          </span>
+                          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
                           <div>
                             <span className="font-mono text-[11px] text-muted-foreground">
-                              Line {err.line}
+                              Line {error.line}
                             </span>
-                            <p className="text-foreground/80 mt-0.5">{err.message}</p>
+                            <p className="mt-0.5 text-foreground/80">
+                              {error.message}
+                            </p>
                           </div>
                         </div>
                       ))}
@@ -336,24 +411,24 @@ export default function Converter() {
                   )}
                   {result.warnings.length > 0 && (
                     <div>
-                      <h4 className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2 uppercase tracking-wider">
+                      <h4 className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
                         Warnings
                       </h4>
-                      {result.warnings.map((warn, idx) => (
+                      {result.warnings.map((warning, index) => (
                         <div
-                          key={`warn-${idx}`}
-                          className="flex items-start gap-2 py-1.5 text-xs border-b border-border/50 last:border-0"
+                          key={`warn-${index}`}
+                          className="flex items-start gap-2 border-b border-border/50 py-1.5 text-xs last:border-0"
                         >
-                          <span className="text-amber-500 shrink-0 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-                          </span>
+                          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
                           <div>
-                            {warn.line > 0 && (
+                            {warning.line > 0 && (
                               <span className="font-mono text-[11px] text-muted-foreground">
-                                Line {warn.line}
+                                Line {warning.line}
                               </span>
                             )}
-                            <p className="text-foreground/80 mt-0.5">{warn.message}</p>
+                            <p className="mt-0.5 text-foreground/80">
+                              {warning.message}
+                            </p>
                           </div>
                         </div>
                       ))}

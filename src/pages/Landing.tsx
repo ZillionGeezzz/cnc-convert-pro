@@ -5,13 +5,9 @@ import {
   Code,
   ChevronRight,
   Shield,
-  Zap,
-  Globe,
-  Layers,
   Cpu,
   Gauge,
   ArrowRight,
-  CheckCircle2,
   Monitor,
   FileCode,
 } from "lucide-react";
@@ -39,7 +35,7 @@ const FEATURES = [
   {
     icon: Code,
     title: "Smart Cycle Translation",
-    desc: "Siemens cycles (CYCLE81–CYCLE89), Heidenhain CYCL DEF, and Fanuc fixed cycles (G81–G89) automatically map between formats.",
+    desc: "Siemens cycles (CYCLE81-CYCLE89), Heidenhain CYCL DEF, and Fanuc fixed cycles (G81-G89) automatically map between formats.",
     gradient: "from-violet-500/10 to-purple-500/10",
   },
   {
@@ -59,27 +55,6 @@ const FEATURES = [
     title: "Cutting Data Calculator",
     desc: "Built-in SFM-to-RPM calculator, feed rate optimizer, and material-specific cutting data for aluminum, steel, titanium, inconel, and more.",
     gradient: "from-sky-500/10 to-indigo-500/10",
-  },
-];
-
-const CONTROLLER_TIERS = [
-  {
-    label: "ISO G-code",
-    controllers: CONTROLLERS.filter((c) => c.format === "gcode-iso").map((c) => c.id),
-    color: "text-blue-500",
-    bg: "bg-blue-500/10",
-  },
-  {
-    label: "Extended G-code",
-    controllers: CONTROLLERS.filter((c) => c.format === "gcode-extended").map((c) => c.id),
-    color: "text-emerald-500",
-    bg: "bg-emerald-500/10",
-  },
-  {
-    label: "Conversational / Hybrid",
-    controllers: CONTROLLERS.filter((c) => c.format === "conversational" || c.format === "hybrid").map((c) => c.id),
-    color: "text-violet-500",
-    bg: "bg-violet-500/10",
   },
 ];
 
@@ -123,13 +98,29 @@ export default function Landing() {
                 fill="none"
                 className="text-emerald-400"
               >
-                <rect x="1" y="1" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M5 10h10M10 5v10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <rect
+                  x="1"
+                  y="1"
+                  width="18"
+                  height="18"
+                  rx="3"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M5 10h10M10 5v10"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
                 <circle cx="10" cy="10" r="2" fill="currentColor" />
               </svg>
             </div>
             <span>CNC Transpiler</span>
-            <Badge variant="outline" className="ml-1.5 text-[10px] border-zinc-700 text-zinc-500 font-mono">
+            <Badge
+              variant="outline"
+              className="ml-1.5 text-[10px] border-zinc-700 text-zinc-500 font-mono"
+            >
               v2.0
             </Badge>
           </div>
@@ -192,7 +183,7 @@ export default function Landing() {
                 className="text-4xl sm:text-5xl lg:text-7xl font-light text-zinc-100 leading-[1.1] tracking-tight"
               >
                 Convert CNC programs
-                <br />
+                <br />{" "}
                 <span className="font-semibold bg-gradient-to-r from-emerald-400 via-emerald-300 to-cyan-400 text-transparent bg-clip-text">
                   across all controllers
                 </span>
@@ -204,9 +195,13 @@ export default function Landing() {
                 transition={{ duration: 0.5, delay: 0.25 }}
                 className="mt-6 text-sm text-zinc-400 max-w-2xl mx-auto leading-relaxed"
               >
-                A real-time converter supporting <span className="text-zinc-200 font-medium">{totalControllers} controller formats</span>{" "}
+                A real-time converter supporting{" "}
+                <span className="text-zinc-200 font-medium">
+                  {totalControllers} controller formats
+                </span>{" "}
                 from Fanuc, Siemens, Heidenhain, Mazak, Okuma, Mitsubishi, Haas,
-                Brother, Fagor, and Bosch. Paste your code, choose your target, get instant results.
+                Brother, Fagor, and Bosch. Paste your code, choose your target,
+                get instant results.
               </motion.p>
 
               <motion.div
@@ -240,17 +235,25 @@ export default function Landing() {
                 className="mt-16 flex items-center justify-center gap-8 sm:gap-16"
               >
                 <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-semibold text-zinc-100">{totalControllers}</div>
+                  <div className="text-2xl sm:text-3xl font-semibold text-zinc-100">
+                    {totalControllers}
+                  </div>
                   <div className="text-xs text-zinc-500 mt-1">Controllers</div>
                 </div>
                 <div className="w-px h-10 bg-zinc-800" />
                 <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-semibold text-zinc-100">{activeConversions.toLocaleString()}</div>
-                  <div className="text-xs text-zinc-500 mt-1">Conversion Paths</div>
+                  <div className="text-2xl sm:text-3xl font-semibold text-zinc-100">
+                    {activeConversions.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    Conversion Paths
+                  </div>
                 </div>
                 <div className="w-px h-10 bg-zinc-800" />
                 <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-semibold text-zinc-100">64</div>
+                  <div className="text-2xl sm:text-3xl font-semibold text-zinc-100">
+                    64
+                  </div>
                   <div className="text-xs text-zinc-500 mt-1">Tools</div>
                 </div>
               </motion.div>
@@ -267,7 +270,9 @@ export default function Landing() {
             transition={{ duration: 0.6 }}
           >
             <div className="text-center mb-10">
-              <h2 className="text-lg font-medium text-zinc-100">Supported Controllers</h2>
+              <h2 className="text-lg font-medium text-zinc-100">
+                Supported Controllers
+              </h2>
               <p className="text-sm text-zinc-500 mt-1">
                 All {totalControllers} formats across 10 manufacturer families
               </p>
@@ -299,7 +304,9 @@ export default function Landing() {
                         {c.manufacturer}
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-zinc-200">{c.name}</div>
+                    <div className="text-sm font-medium text-zinc-200">
+                      {c.name}
+                    </div>
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <Badge
                         variant="outline"
@@ -345,13 +352,19 @@ export default function Landing() {
                     transition={{ duration: 0.4, delay: 0.05 * index }}
                     className="group relative border border-zinc-800 rounded-xl p-6 hover:bg-zinc-900/50 transition-all"
                   >
-                    <div className={`absolute inset-0 rounded-xl bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+                    <div
+                      className={`absolute inset-0 rounded-xl bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+                    />
                     <div className="relative z-10">
                       <div className="w-10 h-10 rounded-lg bg-zinc-800/50 border border-zinc-700/30 flex items-center justify-center mb-4 group-hover:border-zinc-600/50 transition-colors">
                         <Icon className="w-5 h-5 text-zinc-300 group-hover:text-zinc-100 transition-colors" />
                       </div>
-                      <h3 className="text-sm font-medium text-zinc-200 mb-2">{feature.title}</h3>
-                      <p className="text-xs text-zinc-500 leading-relaxed">{feature.desc}</p>
+                      <h3 className="text-sm font-medium text-zinc-200 mb-2">
+                        {feature.title}
+                      </h3>
+                      <p className="text-xs text-zinc-500 leading-relaxed">
+                        {feature.desc}
+                      </p>
                     </div>
                   </motion.div>
                 );
@@ -377,8 +390,9 @@ export default function Landing() {
                 Ready to streamline your workflows?
               </h2>
               <p className="mt-4 text-sm text-zinc-500 max-w-lg mx-auto">
-                Start converting CNC programs between any of the {totalControllers} supported
-                controller formats. No signup required to try the converter.
+                Start converting CNC programs between any of the{" "}
+                {totalControllers} supported controller formats. No signup
+                required to try the converter.
               </p>
               <div className="mt-8 flex items-center justify-center gap-4 flex-wrap">
                 <Button
@@ -409,7 +423,10 @@ export default function Landing() {
             CNC Transpiler
           </div>
           <div className="flex items-center gap-6 text-xs text-zinc-600">
-            <span className="hidden sm:inline">{totalControllers} controllers · {activeConversions.toLocaleString()} paths</span>
+            <span className="hidden sm:inline">
+              {totalControllers} controllers /{" "}
+              {activeConversions.toLocaleString()} paths
+            </span>
             <span>v2.0</span>
           </div>
         </div>

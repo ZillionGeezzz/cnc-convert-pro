@@ -24,7 +24,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { CNCEditor } from "@/components/CNCEditor";
 import { getTools, generateToolProgram } from "@/lib/cnc/tool-library";
@@ -54,9 +53,7 @@ import {
   Plus,
   Save,
   Trash2,
-  Pencil,
   Star,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -143,11 +140,9 @@ export default function Tools() {
   const [copied, setCopied] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<CustomToolForm>(defaultCustomForm);
-  const [editingToolId, setEditingToolId] = useState<Id<"userTools"> | "new">("new");
 
   const userTools = useQuery(api.tools.getUserTools);
   const createUserTool = useMutation(api.tools.createUserTool);
-  const updateUserTool = useMutation(api.tools.updateUserTool);
   const deleteUserTool = useMutation(api.tools.deleteUserTool);
 
   const libraryTools = useMemo(() => getTools(), []);
@@ -210,46 +205,48 @@ export default function Tools() {
     depth: 10,
   });
 
-  const openToolDialog = useCallback((tool: ToolDefinition & { isCustom?: boolean; customToolId?: Id<"userTools"> }) => {
-    const defaultOp = Object.keys(tool.defaultParams)[0] as OperationType | undefined;
-    const defaults = defaultOp ? tool.defaultParams[defaultOp] : undefined;
+  const openToolDialog = useCallback(
+    (
+      tool: ToolDefinition & {
+        isCustom?: boolean;
+        customToolId?: Id<"userTools">;
+      },
+    ) => {
+      const defaultOp = Object.keys(tool.defaultParams)[0] as
+        | OperationType
+        | undefined;
+      const defaults = defaultOp ? tool.defaultParams[defaultOp] : undefined;
 
-    setDialogState({
-      tool,
-      isCustom: !!tool.isCustom,
-      customToolId: tool.customToolId,
-      operation: defaultOp || "roughing",
-      feedRate: defaults?.feedRate || 1000,
-      spindleSpeed: defaults?.spindleSpeed || 8000,
-      depthOfCut: defaults?.depthOfCut || 1,
-      stepover: defaults?.stepover || 2,
-      peckDepth: defaults?.peckDepth || 1,
-      coolant: defaults?.coolant || "flood",
-      outputFormat: "mitsubishi-m80",
-      generatedCode: "",
-      x: 50,
-      y: 50,
-      z: 0,
-      depth: 10,
-    });
-    setDialogOpen(true);
-  }, []);
+      setDialogState({
+        tool,
+        isCustom: !!tool.isCustom,
+        customToolId: tool.customToolId,
+        operation: defaultOp || "roughing",
+        feedRate: defaults?.feedRate || 1000,
+        spindleSpeed: defaults?.spindleSpeed || 8000,
+        depthOfCut: defaults?.depthOfCut || 1,
+        stepover: defaults?.stepover || 2,
+        peckDepth: defaults?.peckDepth || 1,
+        coolant: defaults?.coolant || "flood",
+        outputFormat: "mitsubishi-m80",
+        generatedCode: "",
+        x: 50,
+        y: 50,
+        z: 0,
+        depth: 10,
+      });
+      setDialogOpen(true);
+    },
+    [],
+  );
 
   const openCreateDialog = useCallback(() => {
-    setEditForm({ ...defaultCustomForm, number: (allTools.length + 1) });
-    setEditingToolId("new");
+    setEditForm({ ...defaultCustomForm, number: allTools.length + 1 });
     setEditDialogOpen(true);
   }, [allTools.length]);
 
-  const openEditDialog = useCallback((tool: ToolDefinition) => {
-    setEditForm(toolToForm(tool));
-    setEditingToolId("new");
-    setEditDialogOpen(true);
-  }, []);
-
   const openSaveAsDialog = useCallback((tool: ToolDefinition) => {
     setEditForm({ ...toolToForm(tool), name: `${tool.name} (Custom)` });
-    setEditingToolId("new");
     setEditDialogOpen(true);
   }, []);
 
@@ -274,20 +271,23 @@ export default function Tools() {
       await createUserTool(args);
       toast.success("Custom tool created");
       setEditDialogOpen(false);
-    } catch (err) {
+    } catch {
       toast.error("Failed to create tool");
     }
   }, [editForm, createUserTool]);
 
-  const handleDeleteUserTool = useCallback(async (toolId: Id<"userTools">) => {
-    try {
-      await deleteUserTool({ toolId });
-      toast.success("Tool deleted");
-      setDialogOpen(false);
-    } catch (err) {
-      toast.error("Failed to delete tool");
-    }
-  }, [deleteUserTool]);
+  const handleDeleteUserTool = useCallback(
+    async (toolId: Id<"userTools">) => {
+      try {
+        await deleteUserTool({ toolId });
+        toast.success("Tool deleted");
+        setDialogOpen(false);
+      } catch {
+        toast.error("Failed to delete tool");
+      }
+    },
+    [deleteUserTool],
+  );
 
   const generateCode = useCallback(() => {
     setDialogState((prev) => {
@@ -300,13 +300,19 @@ export default function Tools() {
         coolant: prev.coolant,
       };
 
-      const code = generateToolProgram(prev.tool, prev.operation, params, prev.outputFormat, {
-        programNumber: 1,
-        x: prev.x,
-        y: prev.y,
-        z: prev.z,
-        depth: prev.depth,
-      });
+      const code = generateToolProgram(
+        prev.tool,
+        prev.operation,
+        params,
+        prev.outputFormat,
+        {
+          programNumber: 1,
+          x: prev.x,
+          y: prev.y,
+          z: prev.z,
+          depth: prev.depth,
+        },
+      );
 
       return { ...prev, generatedCode: code };
     });
@@ -336,7 +342,7 @@ export default function Tools() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
+    <div className="min-h-screen bg-background">
       <MinimalHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -349,15 +355,15 @@ export default function Tools() {
         >
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-lg font-medium text-foreground">Tool Library</h1>
+              <h1 className="text-lg font-medium text-foreground">
+                Tool Library
+              </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                {allTools.length} tools available — click any tool to generate a program
+                {allTools.length} tools available - click any tool to generate a
+                program
               </p>
             </div>
-            <Button
-              onClick={openCreateDialog}
-              className="h-8 text-xs gap-1.5"
-            >
+            <Button onClick={openCreateDialog} className="h-8 text-xs gap-1.5">
               <Plus className="w-3.5 h-3.5" />
               Add Tool
             </Button>
@@ -421,12 +427,14 @@ export default function Tools() {
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={cn(
-                    "w-8 h-8 rounded-md flex items-center justify-center",
-                    tool.isCustom
-                      ? "bg-amber-100 dark:bg-amber-900/30"
-                      : "bg-zinc-100 dark:bg-zinc-800",
-                  )}>
+                  <div
+                    className={cn(
+                      "w-8 h-8 rounded-md flex items-center justify-center",
+                      tool.isCustom
+                        ? "bg-amber-100 dark:bg-amber-900/30"
+                        : "bg-zinc-100 dark:bg-zinc-800",
+                    )}
+                  >
                     {tool.isCustom ? (
                       <Star className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     ) : (
@@ -443,7 +451,7 @@ export default function Tools() {
                       )}
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">
-                      T{tool.number} · {TOOL_TYPE_LABELS[tool.type]}
+                      T{tool.number} / {TOOL_TYPE_LABELS[tool.type]}
                     </div>
                   </div>
                 </div>
@@ -455,7 +463,7 @@ export default function Tools() {
               <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Ruler className="w-3 h-3" />
-                  Ø{tool.diameter}mm
+                  Dia {tool.diameter}mm
                 </span>
                 {tool.flutes && (
                   <span className="flex items-center gap-1">
@@ -472,7 +480,9 @@ export default function Tools() {
 
           {filteredTools.length === 0 && (
             <div className="col-span-full py-12 text-center">
-              <p className="text-sm text-muted-foreground">No tools found matching your search.</p>
+              <p className="text-sm text-muted-foreground">
+                No tools found matching your search.
+              </p>
             </div>
           )}
         </motion.div>
@@ -493,16 +503,20 @@ export default function Tools() {
                   )}
                 </DialogTitle>
                 <DialogDescription className="text-xs">
-                  T{dialogState.tool.number} · Ø{dialogState.tool.diameter}mm ·{" "}
-                  {dialogState.tool.material.replace("-", " ")}
-                  {dialogState.tool.flutes ? ` · ${dialogState.tool.flutes} flutes` : ""}
+                  T{dialogState.tool.number} / Dia {dialogState.tool.diameter}mm
+                  / {dialogState.tool.material.replace("-", " ")}
+                  {dialogState.tool.flutes
+                    ? ` / ${dialogState.tool.flutes} flutes`
+                    : ""}
                 </DialogDescription>
               </div>
               {dialogState.isCustom && dialogState.customToolId && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleDeleteUserTool(dialogState.customToolId!)}
+                  onClick={() =>
+                    handleDeleteUserTool(dialogState.customToolId!)
+                  }
                   className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
                 >
                   <Trash2 className="w-3 h-3 mr-1" />
@@ -559,7 +573,9 @@ export default function Tools() {
             {/* Parameters */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Feed Rate (mm/min)</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Feed Rate (mm/min)
+                </Label>
                 <Input
                   type="number"
                   value={dialogState.feedRate}
@@ -573,7 +589,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Spindle Speed (RPM)</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Spindle Speed (RPM)
+                </Label>
                 <Input
                   type="number"
                   value={dialogState.spindleSpeed}
@@ -587,7 +605,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Depth of Cut (mm)</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Depth of Cut (mm)
+                </Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -602,7 +622,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Stepover (mm)</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Stepover (mm)
+                </Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -617,7 +639,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Peck Depth (mm)</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Peck Depth (mm)
+                </Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -632,7 +656,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Coolant</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Coolant
+                </Label>
                 <Select
                   value={dialogState.coolant}
                   onValueChange={(v) =>
@@ -660,7 +686,9 @@ export default function Tools() {
             {/* Position & Depth */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">X Position</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  X Position
+                </Label>
                 <Input
                   type="number"
                   value={dialogState.x}
@@ -674,7 +702,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Y Position</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Y Position
+                </Label>
                 <Input
                   type="number"
                   value={dialogState.y}
@@ -688,7 +718,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Z Top</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Z Top
+                </Label>
                 <Input
                   type="number"
                   value={dialogState.z}
@@ -702,7 +734,9 @@ export default function Tools() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Total Depth (mm)</Label>
+                <Label className="text-[11px] text-muted-foreground">
+                  Total Depth (mm)
+                </Label>
                 <Input
                   type="number"
                   value={dialogState.depth}
@@ -737,7 +771,7 @@ export default function Tools() {
                 <SelectContent>
                   {CONTROLLERS.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.manufacturer} — {c.name}
+                      {c.manufacturer} - {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -754,7 +788,9 @@ export default function Tools() {
             {dialogState.generatedCode && (
               <div className="relative">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-muted-foreground">Generated Program</span>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Generated Program
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -797,7 +833,9 @@ export default function Tools() {
               <Label className="text-xs text-muted-foreground">Tool Name</Label>
               <Input
                 value={editForm.name}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                }
                 className="h-8 text-sm"
                 placeholder="e.g. 8mm Custom End Mill"
               />
@@ -808,7 +846,9 @@ export default function Tools() {
                 <Label className="text-xs text-muted-foreground">Type</Label>
                 <Select
                   value={editForm.type}
-                  onValueChange={(v) => setEditForm((prev) => ({ ...prev, type: v as ToolType }))}
+                  onValueChange={(v) =>
+                    setEditForm((prev) => ({ ...prev, type: v as ToolType }))
+                  }
                 >
                   <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
@@ -823,11 +863,18 @@ export default function Tools() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Tool Number</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Tool Number
+                </Label>
                 <Input
                   type="number"
                   value={editForm.number}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, number: parseInt(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      number: parseInt(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -835,12 +882,19 @@ export default function Tools() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Diameter (mm)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Diameter (mm)
+                </Label>
                 <Input
                   type="number"
                   step="0.1"
                   value={editForm.diameter}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, diameter: parseFloat(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      diameter: parseFloat(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -849,7 +903,12 @@ export default function Tools() {
                 <Input
                   type="number"
                   value={editForm.flutes}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, flutes: parseInt(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      flutes: parseInt(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -857,21 +916,35 @@ export default function Tools() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Length (mm)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Length (mm)
+                </Label>
                 <Input
                   type="number"
                   value={editForm.length}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, length: parseFloat(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      length: parseFloat(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Length of Cut (mm)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Length of Cut (mm)
+                </Label>
                 <Input
                   type="number"
                   step="0.1"
                   value={editForm.lengthOfCut}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, lengthOfCut: parseFloat(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      lengthOfCut: parseFloat(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -879,12 +952,19 @@ export default function Tools() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Shank Diameter (mm)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Shank Diameter (mm)
+                </Label>
                 <Input
                   type="number"
                   step="0.1"
                   value={editForm.shankDiameter}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, shankDiameter: parseFloat(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      shankDiameter: parseFloat(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -893,7 +973,12 @@ export default function Tools() {
                 <Input
                   type="number"
                   value={editForm.maxRPM}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, maxRPM: parseInt(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      maxRPM: parseInt(e.target.value) || 0,
+                    }))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -901,10 +986,17 @@ export default function Tools() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Material</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Material
+                </Label>
                 <Select
                   value={editForm.material}
-                  onValueChange={(v) => setEditForm((prev) => ({ ...prev, material: v as ToolMaterial }))}
+                  onValueChange={(v) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      material: v as ToolMaterial,
+                    }))
+                  }
                 >
                   <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
@@ -922,7 +1014,12 @@ export default function Tools() {
                 <Label className="text-xs text-muted-foreground">Coating</Label>
                 <Select
                   value={editForm.coating}
-                  onValueChange={(v) => setEditForm((prev) => ({ ...prev, coating: v as ToolCoating }))}
+                  onValueChange={(v) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      coating: v as ToolCoating,
+                    }))
+                  }
                 >
                   <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
@@ -942,7 +1039,9 @@ export default function Tools() {
               <Label className="text-xs text-muted-foreground">Notes</Label>
               <Textarea
                 value={editForm.notes}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, notes: e.target.value }))
+                }
                 className="text-sm min-h-[60px]"
                 placeholder="Optional notes about this tool"
               />

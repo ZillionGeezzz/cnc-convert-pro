@@ -1,6 +1,7 @@
-import { useRef, useCallback, useEffect, useState, useMemo } from "react";
+import { useRef, useCallback, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { tokenizeLine, TOKEN_COLORS, type GCodeTokenType } from "@/lib/cnc/highlighter";
+import { tokenizeLine, TOKEN_COLORS } from "@/lib/cnc/highlighter";
+import { Badge } from "@/components/ui/badge";
 
 interface CNCEditorProps {
   value: string;
@@ -17,7 +18,11 @@ interface CNCEditorProps {
 /**
  * Renders a highlighted line from tokens.
  */
-function HighlightedLine({ tokens }: { tokens: ReturnType<typeof tokenizeLine> }) {
+function HighlightedLine({
+  tokens,
+}: {
+  tokens: ReturnType<typeof tokenizeLine>;
+}) {
   return (
     <>
       {tokens.map((token, idx) => {
@@ -45,8 +50,8 @@ export function CNCEditor({
 }: CNCEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
-  const [lineCount, setLineCount] = useState(1);
   const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   const lines = useMemo(() => value.split("\n"), [value]);
 
@@ -54,10 +59,10 @@ export function CNCEditor({
     () => lines.map((line) => tokenizeLine(line)),
     [lines],
   );
-
-  useEffect(() => {
-    setLineCount(lines.length);
-  }, [lines.length]);
+  const editorStyle = {
+    minHeight,
+    "--cnc-editor-line-height": "1.421875rem",
+  } as React.CSSProperties;
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -69,6 +74,7 @@ export function CNCEditor({
   const handleScroll = useCallback(() => {
     if (textareaRef.current) {
       setScrollTop(textareaRef.current.scrollTop);
+      setScrollLeft(textareaRef.current.scrollLeft);
     }
   }, []);
 
@@ -89,22 +95,37 @@ export function CNCEditor({
     [value, onChange],
   );
 
-  const lineNumberWidth = 10;
-
   return (
     <div className={cn("flex flex-col", className)}>
       {label && (
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground tracking-wider uppercase">
-            {label}
-          </span>
+        <div className="flex items-center justify-between rounded-t-xl border border-border bg-card px-4 py-2.5 shadow-sm">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-semibold tracking-tight text-foreground">
+              {label}
+            </span>
+            {readOnly && (
+              <Badge
+                variant="outline"
+                className="border-border/80 bg-muted/60 text-[10px] text-muted-foreground"
+              >
+                Read only
+              </Badge>
+            )}
+          </div>
           {(errorCount !== undefined || warningCount !== undefined) && (
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex shrink-0 items-center gap-2">
               {errorCount !== undefined && errorCount > 0 && (
-                <span className="text-destructive">{errorCount} error{errorCount !== 1 ? "s" : ""}</span>
+                <Badge variant="destructive" className="text-[10px]">
+                  {errorCount} error{errorCount !== 1 ? "s" : ""}
+                </Badge>
               )}
               {warningCount !== undefined && warningCount > 0 && (
-                <span className="text-amber-600 dark:text-amber-400">{warningCount} warning{warningCount !== 1 ? "s" : ""}</span>
+                <Badge
+                  variant="outline"
+                  className="border-amber-300/70 bg-amber-50 text-[10px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                >
+                  {warningCount} warning{warningCount !== 1 ? "s" : ""}
+                </Badge>
               )}
             </div>
           )}
@@ -112,25 +133,25 @@ export function CNCEditor({
       )}
       <div
         className={cn(
-          "relative border border-border rounded-md overflow-hidden",
-          "bg-white dark:bg-zinc-950",
-          "font-mono text-sm leading-relaxed",
+          "relative overflow-hidden border border-border bg-card font-mono text-sm leading-relaxed shadow-sm",
+          "focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10",
+          label ? "rounded-b-xl border-t-0" : "rounded-xl",
         )}
-        style={{ minHeight }}
+        style={editorStyle}
       >
         {/* Line numbers */}
         <div
-          className="absolute left-0 top-0 bottom-0 w-10 bg-zinc-50 dark:bg-zinc-900 border-r border-border select-none pointer-events-none z-10"
+          className="absolute bottom-0 left-0 top-0 z-10 w-11 select-none border-r border-border bg-muted/45 pointer-events-none"
           aria-hidden="true"
         >
           <div
-            className="py-3 transition-transform"
+            className="py-3"
             style={{ transform: `translateY(-${scrollTop}px)` }}
           >
-            {Array.from({ length: lineCount }, (_, i) => (
+            {Array.from({ length: lines.length }, (_, i) => (
               <div
                 key={i}
-                className="text-right pr-3 text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-600"
+                className="h-[var(--cnc-editor-line-height)] pr-3 text-right text-[11px] leading-[var(--cnc-editor-line-height)] text-muted-foreground/60"
               >
                 {i + 1}
               </div>
@@ -141,17 +162,21 @@ export function CNCEditor({
         {/* Highlighting overlay */}
         <div
           ref={highlightRef}
-          className="pointer-events-none absolute left-0 top-0 right-0 bottom-0 overflow-hidden"
+          className="pointer-events-none absolute inset-0 overflow-hidden"
           aria-hidden="true"
         >
           <div
-            className="py-3 pl-12 pr-4 whitespace-pre font-mono text-sm leading-relaxed"
-            style={{ transform: `translateY(-${scrollTop}px)` }}
+            className="whitespace-pre py-3 pl-14 pr-4 font-mono text-sm leading-[var(--cnc-editor-line-height)]"
+            style={{
+              transform: `translate(${-scrollLeft}px, -${scrollTop}px)`,
+            }}
           >
             {tokenizedLines.map((tokens, idx) => (
-              <div key={idx}>
+              <div
+                key={idx}
+                className="h-[var(--cnc-editor-line-height)] leading-[var(--cnc-editor-line-height)]"
+              >
                 <HighlightedLine tokens={tokens} />
-                {idx < tokenizedLines.length - 1 && "\n"}
               </div>
             ))}
           </div>
@@ -167,14 +192,17 @@ export function CNCEditor({
           readOnly={readOnly}
           placeholder={placeholder}
           spellCheck={false}
+          wrap="off"
+          aria-label={label || "CNC program editor"}
+          aria-readonly={readOnly}
           className={cn(
             "relative z-5",
             "w-full h-full min-h-[inherit] resize-none",
-            "pl-12 pr-4 py-3",
+            "pl-14 pr-4 py-3",
             "bg-transparent text-transparent caret-zinc-900 dark:caret-zinc-100",
-            "placeholder:text-zinc-300 dark:placeholder:text-zinc-700",
+            "placeholder:text-muted-foreground/45",
             "border-0 outline-none focus:ring-0",
-            "font-mono text-sm leading-relaxed",
+            "font-mono text-sm leading-[var(--cnc-editor-line-height)]",
             readOnly && "cursor-default",
           )}
           style={{ minHeight, color: "transparent" }}
