@@ -13,17 +13,10 @@
  * 7. Inject audit trail comments
  */
 
-import {
-  CNCBlock,
-  CNCProgram,
-  ConversionOptions,
-  ConversionResult,
-  ControllerFormat,
-} from "./types";
+import { CNCProgram, ConversionOptions, ConversionResult } from "./types";
 import { parseProgram } from "./parsers";
 import { normalizeProgram } from "./ir/normalizer";
-import { NeutralIRBlock } from "./ir/types";
-import { resolveCoordinates, ResolutionResult } from "./ir/resolver";
+import { resolveCoordinates } from "./ir/resolver";
 import { applyTransformations } from "./ir/transformers/index";
 import { MachineStateMachine } from "./state/machine";
 import { SafetyValidator } from "./safety/validator";
@@ -58,7 +51,8 @@ export function convertProgram(
   }
 
   // Step 4: Resolve G91 incremental moves to absolute coordinates
-  const { blocks: resolvedBlocks, resolvedCount } = resolveCoordinates(irBlocks);
+  const { blocks: resolvedBlocks, resolvedCount } =
+    resolveCoordinates(irBlocks);
   if (resolvedCount > 0) {
     warnings.push({
       line: 0,
@@ -68,7 +62,11 @@ export function convertProgram(
   }
 
   // Step 5: Apply target-specific IR transformations
-  const transformed = applyTransformations(resolvedBlocks, options.sourceFormat, options.targetFormat);
+  const transformed = applyTransformations(
+    resolvedBlocks,
+    options.sourceFormat,
+    options.targetFormat,
+  );
 
   // Step 6: Safety validation (on transformed blocks)
   const validator = new SafetyValidator();
@@ -94,12 +92,13 @@ export function convertProgram(
   // Step 8: Collect audit trail
   const audit = new AuditTrail(true);
   audit.collect(transformed);
-  const auditSummary = audit.generateSummary(options.targetFormat, options.sourceFormat);
+  const auditSummary = audit.generateSummary(
+    options.targetFormat,
+    options.sourceFormat,
+  );
 
   // Prepend audit summary as a comment block
-  const finalOutput = auditSummary
-    ? auditSummary + "\n" + output
-    : output;
+  const finalOutput = auditSummary ? auditSummary + "\n" + output : output;
 
   // Step 9: Add cross-family warning if applicable
   if (options.sourceFormat !== options.targetFormat) {
@@ -108,7 +107,7 @@ export function convertProgram(
     if (sourceFamily !== targetFamily) {
       warnings.push({
         line: 0,
-        message: `Cross-family conversion (${sourceFamily} → ${targetFamily}). Some cycles and features may need manual adjustment.`,
+        message: `Cross-family conversion (${sourceFamily} -> ${targetFamily}). Some cycles and features may need manual adjustment.`,
         severity: "warning",
       });
     }

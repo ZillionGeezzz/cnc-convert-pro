@@ -683,9 +683,11 @@ function generateFanuc(
         break;
 
       case "tool-length-comp":
-        line = block.toolLengthOffset !== undefined
-          ? `G43 H${String(block.toolLengthOffset).padStart(2, "0")}`
-          : "G43";
+        if (block.toolLengthOffset === undefined) {
+          line = formatComment(`MANUAL REVIEW: tool length offset missing: ${block.raw.trim()}`, format);
+          break;
+        }
+        line = `G43 H${String(block.toolLengthOffset).padStart(2, "0")}`;
         if (block.target) {
           const targetStr = formatTarget(block.target, format, false);
           if (targetStr) line += ` ${targetStr}`;
@@ -934,7 +936,7 @@ function generateHeidenhain(
   const lines: string[] = [];
   const state = new EmissionTracker(machine?.context);
   const progName = options?.programNumber ? `PGM_${String(options.programNumber).padStart(4, "0")}` : "PROGRAM";
-  let suppressNextCycleCall = false;
+  let suppressActiveCycleCall = false;
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
@@ -968,38 +970,36 @@ function generateHeidenhain(
         break;
 
       case "cycle-drill":
-        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        suppressActiveCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
         line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-peck-drill":
-        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        suppressActiveCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
         line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-tap":
-        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        suppressActiveCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
         line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-bore":
-        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        suppressActiveCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
         line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-other":
-        suppressNextCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
+        suppressActiveCycleCall = shouldSuppressFollowingHeidenhainCycleCall(block);
         line = emitCycleHeidenhain(block, shouldInlineHeidenhainCycleCall(blocks, i));
         break;
 
       case "cycle-call":
-        if (suppressNextCycleCall) {
+        if (suppressActiveCycleCall) {
           lines.push(formatComment(`MANUAL REVIEW: suppressed CYCL CALL after unsupported cycle: ${block.raw.trim()}`, format));
-          suppressNextCycleCall = false;
           continue;
         }
         lines.push("CYCL CALL");
-        suppressNextCycleCall = false;
         continue;
 
       case "tool-change":

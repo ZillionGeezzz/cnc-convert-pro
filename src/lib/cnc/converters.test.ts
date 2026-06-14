@@ -251,6 +251,25 @@ END PGM TEST MM`,
     expect(result.output).not.toMatch(/^CYCL CALL$/m);
   });
 
+  it("suppresses every CYCL CALL for the active unsupported Heidenhain cycle", () => {
+    const result = convertProgram(
+      `BEGIN PGM TEST MM
+CYCL DEF 204 BACK BORING
+Q200=+2
+Q201=-12
+Q203=+0
+Q204=5
+CYCL CALL
+CYCL CALL
+END PGM TEST MM`,
+      { sourceFormat: "heidenhain-tnc640", targetFormat: "heidenhain-tnc640" },
+    );
+
+    const suppressedCallCount = result.output.match(/MANUAL REVIEW: suppressed CYCL CALL/g)?.length ?? 0;
+    expect(suppressedCallCount).toBe(2);
+    expect(executableLines(result.output)).not.toContain("CYCL CALL");
+  });
+
   it("honors Fanuc G99 return-to-R plane for later incremental moves", () => {
     const result = convertProgram(
       `G90
@@ -356,13 +375,15 @@ M30`,
     expect(lines).not.toContain("G00 Z100.000");
   });
 
-  it("does not invent Fanuc H01 when G43 has no H offset", () => {
+  it("comments Fanuc G43 for manual review when H offset is missing", () => {
     const result = convertProgram(
       `G43 Z100`,
       { sourceFormat: "fanuc-0i", targetFormat: "fanuc-0i" },
     );
 
-    expect(result.output).toContain("G43 Z100.000");
+    expect(result.output).toContain("MANUAL REVIEW: tool length offset missing: G43 Z100");
+    expect(executableLines(result.output)).not.toContain("G43 Z100.000");
+    expect(executableLines(result.output)).not.toContain("Z100.000");
     expect(result.output).not.toContain("H01");
   });
 

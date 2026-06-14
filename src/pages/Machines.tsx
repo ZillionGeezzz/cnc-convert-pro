@@ -23,20 +23,20 @@ export default function Machines() {
     createDefaultMachineProfile,
   );
 
-  const update = useCallback(<K extends keyof MachineProfile>(
-    key: K,
-    value: MachineProfile[K],
-  ) => {
-    setProfile((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  const update = useCallback(
+    <K extends keyof MachineProfile>(key: K, value: MachineProfile[K]) => {
+      setProfile((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
 
   const handleSave = useCallback(() => {
-    // For now, just log — this will wire into the converter in a future step
+    // For now, just log. This will wire into the converter in a future step.
     console.log("Machine profile saved:", profile);
   }, [profile]);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
+    <div className="min-h-screen bg-background">
       <MinimalHeader />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -50,7 +50,7 @@ export default function Machines() {
             Machine Profile
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Define the machine you're programming for — the converter will use
+            Define the machine you're programming for. The converter will use
             these specs for smarter conversions.
           </p>
         </motion.div>
@@ -96,7 +96,9 @@ export default function Machines() {
             </legend>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">X Travel</Label>
+                <Label className="text-xs text-muted-foreground">
+                  X Travel
+                </Label>
                 <Input
                   type="number"
                   value={profile.xTravel || ""}
@@ -105,7 +107,9 @@ export default function Machines() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Y Travel</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Y Travel
+                </Label>
                 <Input
                   type="number"
                   value={profile.yTravel || ""}
@@ -114,7 +118,9 @@ export default function Machines() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Z Travel</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Z Travel
+                </Label>
                 <Input
                   type="number"
                   value={profile.zTravel || ""}
@@ -136,7 +142,9 @@ export default function Machines() {
                 <Input
                   type="number"
                   value={profile.tableLength || ""}
-                  onChange={(e) => update("tableLength", Number(e.target.value))}
+                  onChange={(e) =>
+                    update("tableLength", Number(e.target.value))
+                  }
                   className="h-8 text-sm"
                 />
               </div>
@@ -184,7 +192,9 @@ export default function Machines() {
                     Programming Mode
                   </Label>
                   <Select
-                    value={profile.bAxisIncremental ? "incremental" : "absolute"}
+                    value={
+                      profile.bAxisIncremental ? "incremental" : "absolute"
+                    }
                     onValueChange={(v) =>
                       update("bAxisIncremental", v === "incremental")
                     }
@@ -193,7 +203,9 @@ export default function Machines() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="incremental">Incremental (G91)</SelectItem>
+                      <SelectItem value="incremental">
+                        Incremental (G91)
+                      </SelectItem>
                       <SelectItem value="absolute">Absolute (G90)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -226,10 +238,7 @@ export default function Machines() {
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2">
-            <Button
-              onClick={handleSave}
-              className="h-8 text-xs gap-1.5"
-            >
+            <Button onClick={handleSave} className="h-8 text-xs gap-1.5">
               <Save className="w-3.5 h-3.5" />
               Save Profile
             </Button>
@@ -249,9 +258,18 @@ export default function Machines() {
               Current Profile Summary
             </h3>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-              <Spec label="Type" value={profile.type === "vmc" ? "VMC" : "HMC"} />
-              <Spec label="Travels" value={`${profile.xTravel} × ${profile.yTravel} × ${profile.zTravel} mm`} />
-              <Spec label="Table" value={`${profile.tableLength} × ${profile.tableWidth} mm`} />
+              <Spec
+                label="Type"
+                value={profile.type === "vmc" ? "VMC" : "HMC"}
+              />
+              <Spec
+                label="Travels"
+                value={`${profile.xTravel} x ${profile.yTravel} x ${profile.zTravel} mm`}
+              />
+              <Spec
+                label="Table"
+                value={`${profile.tableLength} x ${profile.tableWidth} mm`}
+              />
               <Spec
                 label="B-Axis"
                 value={
@@ -260,7 +278,10 @@ export default function Machines() {
                     : "None"
                 }
               />
-              <Spec label="Max RPM" value={profile.maxSpindleRPM.toLocaleString()} />
+              <Spec
+                label="Max RPM"
+                value={profile.maxSpindleRPM.toLocaleString()}
+              />
             </div>
           </div>
         </motion.div>

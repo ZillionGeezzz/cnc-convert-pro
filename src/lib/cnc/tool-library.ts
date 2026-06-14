@@ -1,10 +1,8 @@
 import {
   ToolDefinition,
   ToolType,
-  ToolMaterial,
   OperationType,
   ToolParams,
-  WorkpieceMaterial,
 } from "./types";
 
 /**
@@ -879,7 +877,6 @@ const TOOLS: ToolDefinition[] = [
     diameter: 50,
     subType: "fine-boring",
     length: 80,
-    shankDiameter: "CAT40" as any,
     material: "coated-carbide",
     coating: "tialn",
     maxRPM: 5000,
@@ -888,6 +885,7 @@ const TOOLS: ToolDefinition[] = [
       boring: { feedRate: 100, spindleSpeed: 2500, depthOfCut: 0.15, stepover: 0.05, coolant: "flood", description: "Fine boring for H6-H7 tolerances. Adjustable to 0.01mm." },
       finishing: { feedRate: 80, spindleSpeed: 3500, depthOfCut: 0.05, stepover: 0.03, coolant: "flood" },
     },
+    notes: "CAT40 boring head.",
   },
 
   // ==========================================
@@ -1936,20 +1934,19 @@ export function generateToolProgram(
 
   const lines: string[] = [];
   const isSiemens = family === "siemens";
-  const isFanuc = family === "fanuc" || family === "mitsubishi" || family === "haas";
 
   // Program header
   if (isSiemens) {
     lines.push(`%_N_${tool.name.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}_MPF`);
-    lines.push(`;${tool.name} — ${operation}`);
+    lines.push(`;${tool.name} - ${operation}`);
     lines.push(`;Tool: T${tool.number} D=${tool.diameter}mm`);
   } else if (family === "heidenhain") {
     lines.push(`BEGIN PGM ${String(progNum).padStart(4, "0")} MM`);
-    lines.push(`;${tool.name} — ${operation}`);
+    lines.push(`;${tool.name} - ${operation}`);
   } else {
     // Fanuc/Mitsubishi/Haas/Okuma
     lines.push(`O${String(progNum).padStart(4, "0")}`);
-    lines.push(`(${tool.name} — ${operation})`);
+    lines.push(`(${tool.name} - ${operation})`);
     lines.push(`(Tool: T${tool.number} D=${tool.diameter}mm)`);
   }
 
