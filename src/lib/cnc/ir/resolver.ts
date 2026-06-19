@@ -94,7 +94,7 @@ export function resolveCoordinates(
     ) {
       const originalTarget = block.target ? { ...block.target } : {};
       const resolvedTarget = block.target
-        ? resolveTarget(block.target, currentPosition)
+        ? resolveTarget(block.target, currentPosition, isIncremental)
         : undefined;
       const auditTarget = resolvedTarget ?? {};
       const resolvedCycle = block.cycle
@@ -187,7 +187,7 @@ function normalizePosition(position: Record<string, number>): Record<string, num
   );
 }
 
-function resolveTarget(target: AxisTarget, currentPosition: Record<string, number>): AxisTarget {
+function resolveTarget(target: AxisTarget, currentPosition: Record<string, number>, isModalIncremental: boolean): AxisTarget {
   const resolvedTarget: AxisTarget = {};
 
   // First, resolve explicit incremental fields (IX, IY, etc.) regardless of modal G90/G91
@@ -203,12 +203,15 @@ function resolveTarget(target: AxisTarget, currentPosition: Record<string, numbe
       continue;
     }
 
-    // Standard axes
+    // Standard axes: incremental only when modal G91 is active
     if (isPositionAxis(key)) {
-      const currentVal = currentPosition[key.toUpperCase()] ?? 0;
-      // We don't know if the caller wants to force incremental resolution here
-      // but usually resolveTarget is called only when we NEED absolute output.
-      resolvedTarget[key] = currentVal + value;
+      if (isModalIncremental) {
+        const currentVal = currentPosition[key.toUpperCase()] ?? 0;
+        resolvedTarget[key] = currentVal + value;
+      } else {
+        // Absolute mode — use the value directly
+        resolvedTarget[key] = value;
+      }
     } else {
       resolvedTarget[key] = value;
     }

@@ -8,7 +8,7 @@
 import type { NeutralIRBlock, AuditEntry } from "../types";
 import type { ControllerFormat } from "../../types";
 import { getControllerFamily } from "../family";
-import { getToolById } from "../../tool-library";
+import { getToolById, getToolByNumber } from "../../tool-library";
 
 export type TransformerContext = {
   sourceFormat: ControllerFormat;
@@ -212,10 +212,10 @@ function applyBSPTTaper(
 
   return blocks.map((block) => {
     if (block.type === "tool-change" && block.toolNumber !== undefined) {
-      // Find tool in library by number or id if possible
-      // This is a bit limited since we only have toolNumber in IR usually
-      // Assume for now if the raw text contains BSPT it's a BSPT tool
-      currentToolIsBSPT = /BSPT/i.test(block.raw);
+      const tool = getToolByNumber(block.toolNumber);
+      currentToolIsBSPT = tool !== undefined && (
+        tool.name.includes("BSPT") || tool.id.startsWith("tap-bspt-")
+      );
     }
 
     if (currentToolIsBSPT && block.cycle && block.type === "cycle-tap") {
