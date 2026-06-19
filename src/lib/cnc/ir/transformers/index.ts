@@ -8,6 +8,7 @@
 import type { NeutralIRBlock, AuditEntry } from "../types";
 import type { ControllerFormat } from "../../types";
 import { getControllerFamily } from "../family";
+import { getToolById } from "../../tool-library";
 
 export type TransformerContext = {
   sourceFormat: ControllerFormat;
@@ -37,7 +38,12 @@ const transformers: Transformer[] = [
   transformHeidenhainToSiemensCycles,
   transformFanucToHeidenhainCycles,
   transformSiemensToolNameToComment,
+  applyBSPTTaper,
 ];
+
+// NOTE: Custom dynamic transformers like createGeometryTransformer are not part
+// of the static array above. They should be passed or applied separately
+// if the UI layer wants to use them.
 
 export function applyTransformations(
   blocks: NeutralIRBlock[],
@@ -194,6 +200,45 @@ function mapCycles(
         },
       ],
     };
+  });
+}
+
+function applyBSPTTaper(
+  blocks: NeutralIRBlock[],
+  ctx: TransformerContext,
+): NeutralIRBlock[] {
+  // If we find a BSPT tool being used in a tapping cycle, we should ensure the taper is noted
+  let currentToolIsBSPT = false;
+
+  return blocks.map((block) => {
+    if (block.type === "tool-change" && block.toolNumber !== undefined) {
+      // Find tool in library by number or id if possible
+      // This is a bit limited since we only have toolNumber in IR usually
+      // Assume for now if the raw text contains BSPT it's a BSPT tool
+      currentToolIsBSPT = /BSPT/i.test(block.raw);
+    }
+
+    if (currentToolIsBSPT && block.cycle && block.type === "cycle-tap") {
+      return {
+        ...block,
+        cycle: {
+          ...block.cycle,
+          taperRatio: 0.0625, // 1:16
+        },
+        audit: [
+          ...block.audit,
+          {
+            ruleId: "BSPT_TAPER_APPLIED",
+            description: "Applied 1:16 taper ratio for BSPT tool",
+            source: block.raw,
+            target: "cycle with taperRatio 0.0625",
+            confidence: "approximate",
+          },
+        ],
+      };
+    }
+
+    return block;
   });
 }
 

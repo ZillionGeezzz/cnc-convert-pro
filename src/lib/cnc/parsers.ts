@@ -104,7 +104,9 @@ function parseSiemensLine(line: string, lineNum: number): CNCBlock | null {
       block.mCodes.push(token);
     } else if (/^[XYZABC]$/i.test(token[0]) && token.length > 1) {
       const axis = token[0].toUpperCase();
-      const val = parseFloat(token.slice(1));
+      // Handle X=10 or X10
+      const valStr = token.startsWith(`${axis}=`) ? token.slice(axis.length + 1) : token.slice(1);
+      const val = parseFloat(valStr);
       if (!isNaN(val)) block.axes[axis] = val;
     } else if (token[0] === "F" && token.length > 1) {
       block.feed = parseFloat(token.slice(1));
@@ -333,10 +335,10 @@ function parseHeidenhainLine(line: string, lineNum: number): CNCBlock | null {
   }
 
   // TOOL CALL 1 Z S5000
-  const toolCallMatch = line.match(/^TOOL\s+CALL\s+(\d+)\s+Z\s+S(\d+)/i);
+  const toolCallMatch = line.match(/^TOOL\s+CALL\s+(\d+)\s+([XYZ])\s+S(\d+)/i);
   if (toolCallMatch) {
     block.toolNumber = parseInt(toolCallMatch[1], 10);
-    block.spindleSpeed = parseInt(toolCallMatch[2], 10);
+    block.spindleSpeed = parseInt(toolCallMatch[3], 10);
     block.heidenhainCommand = "TOOL CALL";
     return block;
   }
@@ -389,11 +391,15 @@ function parseHeidenhainLine(line: string, lineNum: number): CNCBlock | null {
   const lMoveMatch = line.match(/^L\s+/i);
   if (lMoveMatch) {
     block.heidenhainCommand = "L";
-    // Parse axis positions: X+50, Y+25, Z-10
-    const axisRegex = /([XYZABCUV])([+-]\d+\.?\d*)/gi;
+    // Parse axis positions: X+50, Y+25, Z-10, IX+5, IY-2
+    const axisRegex = /(I?)([XYZABCUV])([+-]\d+\.?\d*)/gi;
     let m: RegExpExecArray | null;
     while ((m = axisRegex.exec(line)) !== null) {
-      block.axes[m[1].toUpperCase()] = parseFloat(m[2]);
+      const isIncremental = m[1].toUpperCase() === "I";
+      const axis = m[2].toUpperCase();
+      const val = parseFloat(m[3]);
+      const key = isIncremental ? `I${axis}` : axis;
+      block.axes[key] = val;
     }
     const fMatch = line.match(/F(\d+)/i);
     if (fMatch) block.feed = parseFloat(fMatch[1]);
@@ -409,8 +415,27 @@ function parseHeidenhainLine(line: string, lineNum: number): CNCBlock | null {
   }
 
   // CC (circle center), CP (circular path), CR (circle by radius), CT (circle by tangent)
-  if (/^(CC|CP|CR|CT)\s+/i.test(line)) {
-    block.heidenhainCommand = line.split(/\s+/)[0].toUpperCase();
+  const arcMatch = line.match(/^(CC|CP|CR|CT)\s+/i);
+  if (arcMatch) {
+    const cmd = arcMatch[1].toUpperCase();
+    block.heidenhainCommand = cmd;
+
+    // Parse coordinates for CC, CP, CR
+    const axisRegex = /(I?)([XYZABCUV])([+-]\d+\.?\d*)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = axisRegex.exec(line)) !== null) {
+      const isIncremental = m[1].toUpperCase() === "I";
+      const axis = m[2].toUpperCase();
+      const val = parseFloat(m[3]);
+      const key = isIncremental ? `I${axis}` : axis;
+      block.axes[key] = val;
+    }
+
+    if (cmd === "CR") {
+      const rMatch = line.match(/R([+-]\d+\.?\d*)/i);
+      if (rMatch) block.addresses["R"] = parseFloat(rMatch[1]);
+    }
+
     return block;
   }
 

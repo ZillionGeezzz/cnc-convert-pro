@@ -221,8 +221,8 @@ describe("MachineStateMachine", () => {
         audit: [],
       });
 
-      // Position stores all target keys including arc center I,J,K
-      expect(machine.context.position).toEqual({ X: 10, I: 5 });
+      // Position stores absolute coordinates, not arc offsets like I,J,K
+      expect(machine.context.position).toEqual({ X: 10 });
     });
   });
 
@@ -1022,8 +1022,8 @@ describe("MachineStateMachine", () => {
         audit: [],
       });
       expect(machine.context.modalG.motion).toBe("G02");
-      // Position stores all target keys including arc center I,J,K
-      expect(machine.context.position).toEqual({ X: 100, Y: 50, Z: -5, I: 10, J: 0 });
+      // Position stores absolute coordinates, not arc offsets like I,J,K
+      expect(machine.context.position).toEqual({ X: 100, Y: 50, Z: -5 });
     });
   });
 

@@ -71,6 +71,15 @@ export interface AxisTarget {
   u?: number;
   v?: number;
   w?: number;
+  ix?: number; // Incremental X (Heidenhain)
+  iy?: number;
+  iz?: number;
+  ia?: number;
+  ib?: number;
+  ic?: number;
+  iu?: number;
+  iv?: number;
+  iw?: number;
   i?: number; // Arc center or thread axis
   j?: number;
   k?: number;
@@ -119,6 +128,8 @@ export interface CycleDefinition {
   sourceCycleId?: string;
   /** Original controller-specific cycle parameters as raw string */
   originalParams?: string;
+  /** Taper ratio (e.g. 0.0625 for 1:16 pipe threads) */
+  taperRatio?: number;
 }
 
 /**
