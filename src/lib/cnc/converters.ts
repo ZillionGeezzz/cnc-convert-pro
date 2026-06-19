@@ -95,6 +95,8 @@ export function convertProgram(
   const auditSummary = audit.generateSummary(
     options.targetFormat,
     options.sourceFormat,
+    transformed,
+    options.material,
   );
 
   // Prepend audit summary as a comment block

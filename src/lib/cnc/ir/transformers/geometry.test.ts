@@ -45,6 +45,26 @@ describe("Geometry Transformer", () => {
     expect(result[0].target?.y).toBe(15);
   });
 
+  it("should flip arc direction when mirrored on one axis", () => {
+    const transformer = createGeometryTransformer({ mirror: { x: true } });
+    const blocks = [
+      createIRBlock("clockwise-arc", "G2 X10 Y0 I5 J0", { target: { x: 10, y: 0, i: 5, j: 0 } }),
+    ];
+
+    const result = transformer(blocks, ctx);
+    expect(result[0].type).toBe("counterclockwise-arc");
+  });
+
+  it("should NOT flip arc direction when mirrored on two axes", () => {
+    const transformer = createGeometryTransformer({ mirror: { x: true, y: true } });
+    const blocks = [
+      createIRBlock("clockwise-arc", "G2 X10 Y0 I5 J0", { target: { x: 10, y: 0, i: 5, j: 0 } }),
+    ];
+
+    const result = transformer(blocks, ctx);
+    expect(result[0].type).toBe("clockwise-arc");
+  });
+
   it("should transform arc centers (I, J) without offset", () => {
     const transformer = createGeometryTransformer({ scale: { all: 2 }, offset: { x: 100, y: 100 } });
     const blocks = [

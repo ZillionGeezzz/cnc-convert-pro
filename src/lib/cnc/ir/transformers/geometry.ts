@@ -12,6 +12,9 @@ export interface GeometryTransformOptions {
  * to all position-bearing IR blocks.
  */
 export function createGeometryTransformer(options: GeometryTransformOptions): Transformer {
+  const mirroredAxesCount = [options.mirror?.x, options.mirror?.y, options.mirror?.z].filter(Boolean).length;
+  const shouldFlipArcs = mirroredAxesCount % 2 === 1;
+
   return (blocks: NeutralIRBlock[], ctx: TransformerContext): NeutralIRBlock[] => {
     return blocks.map((block) => {
       if (!block.target && !block.cycle) return block;
@@ -20,6 +23,15 @@ export function createGeometryTransformer(options: GeometryTransformOptions): Tr
 
       if (newBlock.target) {
         newBlock.target = transformTarget(newBlock.target, options);
+      }
+
+      // Flip arc direction if mirroring causes coordinate system inversion (odd count of mirrors)
+      if (shouldFlipArcs) {
+        if (newBlock.type === "clockwise-arc") {
+          newBlock.type = "counterclockwise-arc";
+        } else if (newBlock.type === "counterclockwise-arc") {
+          newBlock.type = "clockwise-arc";
+        }
       }
 
       if (newBlock.cycle) {

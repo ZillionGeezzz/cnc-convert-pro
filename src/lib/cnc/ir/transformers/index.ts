@@ -209,17 +209,18 @@ function applyBSPTTaper(
 ): NeutralIRBlock[] {
   // If we find a BSPT tool being used in a tapping cycle, we should ensure the taper is noted
   let currentToolIsBSPT = false;
+  let currentToolName = "";
 
   return blocks.map((block) => {
-    if (block.type === "tool-change" && block.toolNumber !== undefined) {
-      // Find tool in library by number or id if possible
-      // This is a bit limited since we only have toolNumber in IR usually
-      // Assume for now if the raw text contains BSPT it's a BSPT tool
-      currentToolIsBSPT = /BSPT/i.test(block.raw);
+    if (block.type === "tool-change" || block.type === "tool-definition") {
+      currentToolName = block.toolName || "";
+      currentToolIsBSPT = /BSPT/i.test(block.raw) || /BSPT/i.test(currentToolName);
     }
 
     if (currentToolIsBSPT && block.cycle && block.type === "cycle-tap") {
-      return {
+      const isFanucTarget = ctx.targetFamily === "fanuc" || ctx.targetFamily === "haas" || ctx.targetFamily === "mitsubishi";
+
+      const newBlock = {
         ...block,
         cycle: {
           ...block.cycle,
@@ -232,10 +233,24 @@ function applyBSPTTaper(
             description: "Applied 1:16 taper ratio for BSPT tool",
             source: block.raw,
             target: "cycle with taperRatio 0.0625",
-            confidence: "approximate",
+            confidence: "approximate" as const,
           },
         ],
       };
+
+      // If target is Fanuc G84, it doesn't natively support taper in most versions
+      // so we should add a warning.
+      if (isFanucTarget && block.cycle.originalCycleId === "G84") {
+        newBlock.audit.push({
+          ruleId: "G84_TAPER_WARNING",
+          description: "Fanuc G84 does not natively support tapered threads. Machine might require a specialized cycle or helical interpolation.",
+          source: "G84",
+          target: "G84",
+          confidence: "manual-review-needed" as const,
+        });
+      }
+
+      return newBlock;
     }
 
     return block;

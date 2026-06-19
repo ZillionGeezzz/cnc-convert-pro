@@ -203,6 +203,7 @@ export interface ConversionOptions {
   axisCount?: AxisCount;
   programNumber?: number;
   commentStyle?: "semicolon" | "parens";
+  material?: WorkpieceMaterial;
 }
 
 export interface CNCBlock {

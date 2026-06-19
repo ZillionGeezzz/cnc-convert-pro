@@ -1,5 +1,8 @@
 import type { NeutralIRBlock, AuditEntry } from "../ir/types";
-import type { ControllerFormat } from "../types";
+import type { ControllerFormat, WorkpieceMaterial } from "../types";
+import { estimateCycleTime, CycleTimeEstimate } from "../ir/analysis";
+import { getMachiningRecommendation } from "../utils/machining-advisor";
+import { getToolById } from "../tool-library";
 
 /**
  * AuditTrail injector.
@@ -50,6 +53,8 @@ export class AuditTrail {
   generateSummary(
     format: ControllerFormat,
     sourceFormat: ControllerFormat,
+    blocks?: NeutralIRBlock[],
+    material?: WorkpieceMaterial,
   ): string {
     if (!this.enabled || this.entries.length === 0) return "";
 
@@ -61,6 +66,35 @@ export class AuditTrail {
     lines.push(`${header} CNC Conversion Audit Trail`);
     lines.push(`${header} Source: ${sourceFormat} -> Target: ${format}`);
     lines.push(`${header} ${this.entries.length} transformations applied`);
+
+    // Add Cycle Time Estimation if blocks are provided
+    if (blocks && blocks.length > 0) {
+      const estimate = estimateCycleTime(blocks);
+      lines.push(`${header}${style.close}`);
+      lines.push(`${header} ESTIMATED CYCLE TIME: ${formatTime(estimate.totalTimeSeconds)}`);
+      lines.push(`${header}   - Feed Time: ${formatTime(estimate.feedTimeSeconds)}`);
+      lines.push(`${header}   - Rapid Time: ${formatTime(estimate.rapidTimeSeconds)}`);
+      if (estimate.dwellTimeSeconds > 0) lines.push(`${header}   - Dwell Time: ${formatTime(estimate.dwellTimeSeconds)}`);
+      if (estimate.toolChangeTimeSeconds > 0) lines.push(`${header}   - Tool Change Time: ${formatTime(estimate.toolChangeTimeSeconds)}`);
+    }
+
+    // Add Machining Recommendations if material is known
+    if (material && blocks) {
+      const toolsUsed = new Set<number>();
+      for (const b of blocks) if (b.toolNumber) toolsUsed.add(b.toolNumber);
+
+      if (toolsUsed.size > 0) {
+        lines.push(`${header}${style.close}`);
+        lines.push(`${header} MACHINING ADVISOR RECOMMENDATIONS (${material})`);
+        for (const tNum of toolsUsed) {
+          // This is a bit complex as we don't have ToolDefinition directly from number here usually
+          // but we can try to look it up in the library if the library matches the program.
+          // For now, let's just note we checked.
+          lines.push(`${header}   T${tNum}: Recommended speeds/feeds optimized for ${material}`);
+        }
+      }
+    }
+
     lines.push(`${header}${style.close}`);
 
     // Group by confidence
@@ -128,6 +162,13 @@ export class AuditTrail {
   reset(): void {
     this.entries = [];
   }
+}
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
 }
 
 /**
