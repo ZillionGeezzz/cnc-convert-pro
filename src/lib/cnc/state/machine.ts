@@ -309,17 +309,23 @@ export class MachineStateMachine {
 
   private _updatePosition(block: NeutralIRBlock): void {
     if (!block.target) return;
-    const isAbsolute = this.context.absoluteMode;
+    const isAbsoluteMode = this.context.absoluteMode;
 
     for (const [axis, value] of Object.entries(block.target)) {
       if (typeof value !== "number") continue;
-      const key = axis.toUpperCase();
-      if (isAbsolute) {
-        this.context.position[key] = value;
-      } else if (this.context.position[key] !== undefined) {
-        this.context.position[key]! += value;
+
+      const isExplicitIncremental = axis.startsWith("i") && axis.length > 1;
+      const baseAxis = isExplicitIncremental ? axis.slice(1).toUpperCase() : axis.toUpperCase();
+
+      // Skip non-position axes like I, J, K, R for position tracking
+      if (!["X", "Y", "Z", "A", "B", "C", "U", "V", "W"].includes(baseAxis)) continue;
+
+      if (isExplicitIncremental || !isAbsoluteMode) {
+        // Incremental update
+        this.context.position[baseAxis] = (this.context.position[baseAxis] ?? 0) + value;
       } else {
-        this.context.position[key] = value;
+        // Absolute update
+        this.context.position[baseAxis] = value;
       }
     }
   }

@@ -1866,6 +1866,90 @@ const TOOLS: ToolDefinition[] = [
       roughing: { feedRate: 300, spindleSpeed: 12000, depthOfCut: 0.5, coolant: "off" },
     },
   },
+
+  // ==========================================
+  // BSPT TOOLS (British Standard Pipe Taper)
+  // ==========================================
+  {
+    id: "tap-bspt-1-8",
+    number: 95,
+    name: "1/8-28 BSPT Pipe Tap",
+    type: "tap-cutting",
+    diameter: 9.728,
+    length: 55,
+    shankDiameter: 8,
+    material: "hss-cobalt",
+    coating: "tin",
+    maxRPM: 800,
+    defaultParams: {
+      tapping: { feedRate: 254, spindleSpeed: 280, depthOfCut: 10, coolant: "flood", description: "1/8-28 BSPT — feed = spindle speed × 0.907" },
+    },
+    notes: "Tapered pipe tap (1:16 taper). Accurate pitch is critical for pressure-tight seals.",
+  },
+  {
+    id: "tap-bspt-1-4",
+    number: 96,
+    name: "1/4-19 BSPT Pipe Tap",
+    type: "tap-cutting",
+    diameter: 13.157,
+    length: 62,
+    shankDiameter: 10,
+    material: "hss-cobalt",
+    coating: "tin",
+    maxRPM: 600,
+    defaultParams: {
+      tapping: { feedRate: 267, spindleSpeed: 200, depthOfCut: 14, coolant: "flood", description: "1/4-19 BSPT — feed = spindle speed × 1.337" },
+    },
+  },
+  {
+    id: "tap-bspt-3-8",
+    number: 97,
+    name: "3/8-19 BSPT Pipe Tap",
+    type: "tap-cutting",
+    diameter: 16.662,
+    length: 65,
+    shankDiameter: 12,
+    material: "hss-cobalt",
+    coating: "tin",
+    maxRPM: 500,
+    defaultParams: {
+      tapping: { feedRate: 200, spindleSpeed: 150, depthOfCut: 15, coolant: "flood" },
+    },
+  },
+  {
+    id: "tap-bspt-1-2",
+    number: 98,
+    name: "1/2-14 BSPT Pipe Tap",
+    type: "tap-cutting",
+    diameter: 20.955,
+    length: 80,
+    shankDiameter: 16,
+    material: "hss-cobalt",
+    coating: "tin",
+    maxRPM: 400,
+    defaultParams: {
+      tapping: { feedRate: 181, spindleSpeed: 100, depthOfCut: 18, coolant: "flood", description: "1/2-14 BSPT — feed = spindle speed × 1.814" },
+    },
+  },
+  {
+    id: "thread-mill-bspt",
+    number: 99,
+    name: "BSPT 1/8-3/8 Thread Mill",
+    type: "thread-mill",
+    diameter: 8,
+    flutes: 3,
+    length: 65,
+    lengthOfCut: 15,
+    shankDiameter: 8,
+    material: "carbide",
+    coating: "altin",
+    maxRPM: 12000,
+    maxDOC: 15,
+    defaultParams: {
+      "thread-milling": { feedRate: 400, spindleSpeed: 6000, depthOfCut: 10, coolant: "mist", description: "Universal BSPT thread mill for small sizes." },
+    },
+    notes: "Tapered thread mill for BSPT (1:16). Use helical interpolation with Z-axis compensation for taper.",
+  },
 ];
 
 export function getTools(): ToolDefinition[] {
@@ -2088,22 +2172,36 @@ export function generateToolProgram(
   return lines.join("\n");
 }
 
-function getThreadPitch(tool: ToolDefinition): number {
-  const name = tool.name;
+export function getThreadPitch(tool: ToolDefinition): number {
+  const name = tool.name.toUpperCase();
 
-  // Use regex word boundaries to avoid matching "M30" with "M3"
+  // Metric standard pitches
   if (/\bM3\b/.test(name)) return 0.5;
-  if (/\bM6\b/.test(name))  return 1.0;
-  if (/\bM8\b/.test(name))  return 1.25;
+  if (/\bM4\b/.test(name)) return 0.7;
+  if (/\bM5\b/.test(name)) return 0.8;
+  if (/\bM6\b/.test(name)) return 1.0;
+  if (/\bM8\b/.test(name)) return 1.25;
   if (/\bM10\b/.test(name)) return 1.5;
   if (/\bM12\b/.test(name)) return 1.75;
   if (/\bM16\b/.test(name)) return 2.0;
   if (/\bM20\b/.test(name)) return 2.5;
-  if (/\b1\/4\b/.test(name)) return 0.635;
+
+  // BSPT (British Standard Pipe Taper) - defined by TPI
+  if (/\b1\/8-28\b/.test(name) || /1\/8\s*BSPT/i.test(name)) return 25.4 / 28;
+  if (/\b1\/4-19\b/.test(name) || /1\/4\s*BSPT/i.test(name)) return 25.4 / 19;
+  if (/\b3\/8-19\b/.test(name) || /3\/8\s*BSPT/i.test(name)) return 25.4 / 19;
+  if (/\b1\/2-14\b/.test(name) || /1\/2\s*BSPT/i.test(name)) return 25.4 / 14;
+  if (/\b3\/4-14\b/.test(name) || /3\/4\s*BSPT/i.test(name)) return 25.4 / 14;
+  if (/\b1-11\b/.test(name) || /\b1"-11\b/.test(name) || /1\s*BSPT/i.test(name)) return 25.4 / 11;
+
+  // Unified Thread Standard (UNC/UNF)
+  if (/\b1\/4-20\b/.test(name)) return 25.4 / 20;
+  if (/\b3\/8-16\b/.test(name)) return 25.4 / 16;
+  if (/\b1\/2-13\b/.test(name)) return 25.4 / 13;
 
   // Fallback: try to extract the pitch from an "M<N>×<P>" pattern
-  const metricMatch = name.match(/M(\d+)[×x]([\d.]+)/);
-  if (metricMatch) return parseFloat(metricMatch[2]);
+  const metricMatch = name.match(/M\d+[×X]([\d.]+)/);
+  if (metricMatch) return parseFloat(metricMatch[1]);
 
   return 1.0;
 }

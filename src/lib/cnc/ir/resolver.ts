@@ -83,9 +83,12 @@ export function resolveCoordinates(
       return block;
     }
 
-    // Resolve any output-bearing position block when in incremental mode.
+    // Check if block has explicit incremental axes (IX, IY, etc.)
+    const hasExplicitIncremental = block.target && Object.keys(block.target).some(k => k.startsWith("i") && isPositionAxis(k.slice(1)));
+
+    // Resolve any output-bearing position block when in incremental mode OR has explicit incremental axes.
     if (
-      isIncremental &&
+      (isIncremental || hasExplicitIncremental) &&
       isPositionBearingBlock(block.type) &&
       (block.target || block.cycle)
     ) {
@@ -187,17 +190,28 @@ function normalizePosition(position: Record<string, number>): Record<string, num
 function resolveTarget(target: AxisTarget, currentPosition: Record<string, number>): AxisTarget {
   const resolvedTarget: AxisTarget = {};
 
+  // First, resolve explicit incremental fields (IX, IY, etc.) regardless of modal G90/G91
   for (const [axis, value] of Object.entries(target)) {
     const key = axis.toLowerCase() as keyof AxisTarget;
     if (typeof value !== "number") continue;
 
-    if (!isPositionAxis(axis)) {
-      resolvedTarget[key] = value;
+    if (key.startsWith("i") && isPositionAxis(key.slice(1))) {
+      const baseAxis = key.slice(1).toUpperCase();
+      const currentVal = currentPosition[baseAxis] ?? 0;
+      const targetKey = baseAxis.toLowerCase() as keyof AxisTarget;
+      resolvedTarget[targetKey] = currentVal + value;
       continue;
     }
 
-    const currentVal = currentPosition[key.toUpperCase()] ?? 0;
-    resolvedTarget[key] = currentVal + value;
+    // Standard axes
+    if (isPositionAxis(key)) {
+      const currentVal = currentPosition[key.toUpperCase()] ?? 0;
+      // We don't know if the caller wants to force incremental resolution here
+      // but usually resolveTarget is called only when we NEED absolute output.
+      resolvedTarget[key] = currentVal + value;
+    } else {
+      resolvedTarget[key] = value;
+    }
   }
 
   return resolvedTarget;

@@ -420,6 +420,14 @@ describe("Heidenhain parser", () => {
     expect(block.axes.Y).toBe(-50);
     expect(block.axes.Z).toBe(-10);
   });
+
+  it("parses incremental coordinates IX, IY, IZ", () => {
+    const program = parseProgram("L IX+5 IY-2 IZ+0 R0 F5000 M3", "heidenhain-tnc640");
+    const block = program.blocks[0];
+    expect(block.axes["IX"]).toBe(5);
+    expect(block.axes["IY"]).toBe(-2);
+    expect(block.axes["IZ"]).toBe(0);
+  });
 });
 
 // ==========================================
